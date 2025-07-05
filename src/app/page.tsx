@@ -24,19 +24,23 @@ const roundDuration = (mins: number, mode: RoundMode, interval: RoundInt) => {
 };
 
 const groupAndMerge = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rows: any[],
   coeff: number,
   roundMode: RoundMode,
   roundInt: RoundInt
 ) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const projects: Record<string, any[]> = {};
   for (const row of rows) {
     const key = row["Project"] || "(No Project)";
     if (!projects[key]) projects[key] = [];
     projects[key].push(row);
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result: Record<string, any[]> = {};
   for (const [project, entries] of Object.entries(projects)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const merged: Record<string, any> = {};
     for (const entry of entries) {
       const desc = entry["Description"];
@@ -52,6 +56,7 @@ const groupAndMerge = (
         merged[mergeKey]["Duration (decimal)"] += mins / 60;
       }
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     result[project] = Object.values(merged).sort((a: any, b: any) => {
       return (
         new Date(a["Start Date"]).getTime() -
@@ -79,7 +84,9 @@ const isDisplayMode = (value: unknown): value is DisplayMode =>
   typeof value === "string" && ["decimal", "hhmm"].includes(value);
 
 const CsvTablePage: FC = () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [csvRows, setCsvRows] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [projects, setProjects] = useState<Record<string, any[]>>({});
   const [coeff, setCoeff] = useState<number>(1);
   const [roundMode, setRoundMode] = useState<RoundMode>("keep");
@@ -178,7 +185,7 @@ const CsvTablePage: FC = () => {
               }
               className="ml-2"
             >
-              <option value="keep">Don't round</option>
+              <option value="keep">Do not round</option>
               <option value="standard">Round (standard)</option>
               <option value="down">Round down</option>
               <option value="up">Round up</option>
