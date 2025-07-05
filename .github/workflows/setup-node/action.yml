@@ -1,0 +1,21 @@
+name: setup-node
+description: Setup Node, install dependencies
+runs:
+  using: composite
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.18.1
+
+    - name: Cache dependencies
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: node-modules-${{ hashFiles('package-lock.json') }}
+
+    - name: Install dependencies
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: npm ci
+      shell: bash
