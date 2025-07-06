@@ -224,32 +224,28 @@ const CsvTablePage: FC = () => {
 
         <div className="flex flex-col gap-2 w-fit">
           <div>
-            <div>
-              <b>Total hours{roundMode !== "keep" && " (after rounding)"}:</b>
-              <span className="ml-2">{formatDuration(totalHours)}</span>
-            </div>
-            <div>
-              <b>Target hours:</b>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={targetHours || ""}
-                onChange={(e) =>
-                  setTargetHours(parseFloat(e.target.value) || 0)
-                }
-                className="w-20 ml-2"
-              />
-            </div>
-            {targetHours > 0 && (
-              <div>
-                <b>Completion:</b>
-                <span className="ml-2">
-                  {((totalHours / targetHours) * 100).toFixed(1)}%
-                </span>
-              </div>
-            )}
+            <b>Total hours{roundMode !== "keep" && " (after rounding)"}:</b>
+            <span className="ml-2">{formatDuration(totalHours)}</span>
           </div>
+          <div>
+            <b>Target hours:</b>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={targetHours || ""}
+              onChange={(e) => setTargetHours(parseFloat(e.target.value) || 0)}
+              className="w-20 ml-2"
+            />
+          </div>
+          {targetHours > 0 && (
+            <div>
+              <b>Completion:</b>
+              <span className="ml-2">
+                {((totalHours / targetHours) * 100).toFixed(1)}%
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <hr className="my-4" />
