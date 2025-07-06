@@ -169,7 +169,7 @@ const CsvTablePage: FC = () => {
             <b>Duration coefficient:</b>
             <input
               type="number"
-              step="0.01"
+              step="0.00001"
               min="0"
               value={coeff}
               onChange={(e) => setCoeff(parseFloat(e.target.value) || 1)}
