@@ -1,0 +1,92 @@
+import { FC, ChangeEvent } from "react";
+import { RoundMode, RoundInt, DisplayMode } from "../types";
+import { ROUND_INTERVALS } from "../utils/constants";
+import { isRoundMode, isRoundInt, isDisplayMode } from "../utils/validators";
+
+interface ControlsProps {
+  coeff: number;
+  setCoeff: (value: number) => void;
+  roundMode: RoundMode;
+  setRoundMode: (value: RoundMode) => void;
+  roundInt: RoundInt;
+  setRoundInt: (value: RoundInt) => void;
+  displayMode: DisplayMode;
+  setDisplayMode: (value: DisplayMode) => void;
+  onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
+}
+
+export const Controls: FC<ControlsProps> = ({
+  coeff,
+  setCoeff,
+  roundMode,
+  setRoundMode,
+  roundInt,
+  setRoundInt,
+  displayMode,
+  setDisplayMode,
+  onFileChange,
+}) => {
+  return (
+    <div className="flex flex-col gap-2 w-fit">
+      <label>
+        <b>Upload CSV:</b>&nbsp;
+        <input type="file" accept=".csv" onChange={onFileChange} />
+      </label>
+      <label>
+        <b>Duration coefficient:</b>
+        <input
+          type="number"
+          step="0.00001"
+          min="0"
+          value={coeff}
+          onChange={(e) => setCoeff(parseFloat(e.target.value) || 1)}
+          className="w-20 ml-2"
+        />
+      </label>
+      <label>
+        <b>Rounding:</b>
+        <select
+          value={roundMode}
+          onChange={(e) =>
+            isRoundMode(e.target.value) && setRoundMode(e.target.value)
+          }
+          className="ml-2"
+        >
+          <option value="keep">Do not round</option>
+          <option value="standard">Round (standard)</option>
+          <option value="down">Round down</option>
+          <option value="up">Round up</option>
+        </select>
+        {roundMode !== "keep" && (
+          <select
+            value={roundInt}
+            onChange={(e) => {
+              const value = parseInt(e.target.value);
+              if (isRoundInt(value)) setRoundInt(value);
+            }}
+            className="ml-2"
+          >
+            {ROUND_INTERVALS.map((intv) => (
+              <option key={intv} value={intv}>
+                {intv} min
+              </option>
+            ))}
+          </select>
+        )}
+      </label>
+      <label>
+        <b>Display as:</b>
+        <select
+          value={displayMode}
+          onChange={(e) =>
+            isDisplayMode(e.target.value) && setDisplayMode(e.target.value)
+          }
+          className="ml-2"
+        >
+          <option value="decimal">Decimal</option>
+          <option value="hhmm">HH:MM</option>
+        </select>
+      </label>
+    </div>
+  );
+};
