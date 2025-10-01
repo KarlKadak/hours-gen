@@ -73,6 +73,11 @@ export type RoundMode = "keep" | "standard" | "down" | "up";
 export type RoundInt = 5 | 10 | 15 | 30 | 60;
 export type DisplayMode = "decimal" | "hhmm";
 
+interface ProjectExportData {
+  projectName: string;
+  clientName: string;
+}
+
 const isRoundMode = (value: unknown): value is RoundMode =>
   typeof value === "string" &&
   ["keep", "standard", "down", "up"].includes(value);
@@ -93,6 +98,11 @@ const CsvTablePage: FC = () => {
   const [roundInt, setRoundInt] = useState<RoundInt>(5);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("decimal");
   const [targetHours, setTargetHours] = useState<number>(0);
+  const [selectedProject, setSelectedProject] = useState<string>("all");
+  const [showExportModal, setShowExportModal] = useState<boolean>(false);
+  const [exportData, setExportData] = useState<
+    Record<string, ProjectExportData>
+  >({});
 
   // On mount load preferences from localStorage
   useEffect(() => {
@@ -151,6 +161,69 @@ const CsvTablePage: FC = () => {
     const hours = Math.floor(totalMins / 60);
     const mins = totalMins % 60;
     return `${hours}:${mins.toString().padStart(2, "0")}`;
+  };
+
+  const openExportModal = () => {
+    const projectsToExport =
+      selectedProject === "all" ? Object.keys(projects) : [selectedProject];
+
+    const initialData: Record<string, ProjectExportData> = {};
+    projectsToExport.forEach((projectName) => {
+      initialData[projectName] = {
+        projectName,
+        clientName: "",
+      };
+    });
+
+    setExportData(initialData);
+    setShowExportModal(true);
+  };
+
+  const exportToCSV = () => {
+    const projectsToExport =
+      selectedProject === "all"
+        ? projects
+        : { [selectedProject]: projects[selectedProject] || [] };
+
+    const csvRows: string[] = [];
+    csvRows.push("Kuupäev,Klient,Projekt,Ülesanne,Tunnid");
+
+    Object.entries(projectsToExport).forEach(
+      ([originalProjectName, entries]) => {
+        const projectData = exportData[originalProjectName];
+        const clientName = projectData?.clientName || "";
+        const projectName = projectData?.projectName || originalProjectName;
+
+        entries.forEach((entry) => {
+          const date = entry["Start Date"] || "";
+          const task = entry["Description"] || "";
+          const hours = entry["Duration (decimal)"] || 0;
+
+          csvRows.push(
+            `"${date}","${clientName}","${projectName}","${task}","${hours.toFixed(
+              2
+            )}"`
+          );
+        });
+      }
+    );
+
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      selectedProject === "all"
+        ? "all_projects_hours.csv"
+        : `${selectedProject}_hours.csv`
+    );
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setShowExportModal(false);
   };
 
   const totalHours = Object.values(projects)
@@ -246,6 +319,30 @@ const CsvTablePage: FC = () => {
               </span>
             </div>
           )}
+          <div>
+            <label>
+              <b>Export project:</b>
+              <select
+                value={selectedProject}
+                onChange={(e) => setSelectedProject(e.target.value)}
+                className="ml-2"
+              >
+                <option value="all">All projects</option>
+                {Object.keys(projects).map((projectName) => (
+                  <option key={projectName} value={projectName}>
+                    {projectName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <button
+            onClick={openExportModal}
+            disabled={Object.keys(projects).length === 0}
+            className="px-3 py-1 text-white border border-white rounded text-sm cursor-pointer disabled:bg-gray-600 disabled:cursor-not-allowed disabled:border-gray-400"
+          >
+            Export to CSV
+          </button>
         </div>
       </div>
       <hr className="my-4" />
@@ -293,6 +390,82 @@ const CsvTablePage: FC = () => {
           )}
         </div>
       ))}
+
+      {showExportModal && (
+        <div
+          className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowExportModal(false)}
+        >
+          <div
+            className="bg-black text-white p-6 rounded-lg shadow-lg max-w-md w-full border border-white max-h-[calc(100vh-2rem)] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-4">Configure Export</h3>
+            <div className="space-y-4">
+              {Object.entries(exportData).map(([originalName, data]) => (
+                <div
+                  key={originalName}
+                  className="border-b border-gray-600 pb-4 last:border-b-0"
+                >
+                  <div className="mb-2">
+                    <label className="block text-sm font-medium mb-1">
+                      Project Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={data.projectName}
+                      onChange={(e) =>
+                        setExportData((prev) => ({
+                          ...prev,
+                          [originalName]: {
+                            ...prev[originalName],
+                            projectName: e.target.value,
+                          },
+                        }))
+                      }
+                      className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Client Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={data.clientName}
+                      onChange={(e) =>
+                        setExportData((prev) => ({
+                          ...prev,
+                          [originalName]: {
+                            ...prev[originalName],
+                            clientName: e.target.value,
+                          },
+                        }))
+                      }
+                      className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white"
+                      placeholder="Enter client name"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="px-4 py-2 text-white border border-gray-600 rounded hover:bg-gray-600 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={exportToCSV}
+                className="px-4 py-2 text-white border border-white rounded hover:bg-gray-800 cursor-pointer"
+              >
+                Export CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
