@@ -2,3 +2,6 @@ export { Controls } from "./Controls";
 export { Summary } from "./Summary";
 export { ProjectTable } from "./ProjectTable";
 export { ExportModal } from "./ExportModal";
+export { PasswordModal } from "./PasswordModal";
+export { CredentialModal } from "./CredentialModal";
+export { JiraExportModal } from "./JiraExportModal";

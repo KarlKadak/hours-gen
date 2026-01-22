@@ -16,3 +16,37 @@ export interface TimeEntry {
 }
 
 export type ProjectData = Record<string, TimeEntry[]>;
+
+export interface JiraCredential {
+  id: string;
+  name: string;
+  jiraDomain: string;
+  jiraEmail: string;
+  jiraApiToken: string;
+  tempoApiToken: string;
+  atlassianAccountId: string;
+}
+
+export interface EncryptedCredentialStore {
+  salt: string;
+  iv: string;
+  data: string;
+}
+
+export interface JiraExportEntry {
+  date: string;
+  issueKey: string;
+  hours: number;
+  description: string;
+  status: "pending" | "in_progress" | "success" | "error";
+  error?: string;
+}
+
+export interface JiraExportState {
+  isExporting: boolean;
+  currentIndex: number;
+  totalEntries: number;
+  entries: JiraExportEntry[];
+  successCount: number;
+  failCount: number;
+}

@@ -14,6 +14,7 @@ interface SummaryProps {
   selectedProject: string;
   setSelectedProject: (value: string) => void;
   onExportClick: () => void;
+  onJiraExportClick: () => void;
 }
 
 export const Summary: FC<SummaryProps> = ({
@@ -26,6 +27,7 @@ export const Summary: FC<SummaryProps> = ({
   selectedProject,
   setSelectedProject,
   onExportClick,
+  onJiraExportClick,
 }) => {
   return (
     <div className="flex flex-col gap-2 w-fit">
@@ -69,13 +71,22 @@ export const Summary: FC<SummaryProps> = ({
           </select>
         </label>
       </div>
-      <button
-        onClick={onExportClick}
-        disabled={Object.keys(projects).length === 0}
-        className="px-3 py-1 text-white border border-white rounded text-sm cursor-pointer disabled:bg-gray-600 disabled:cursor-not-allowed disabled:border-gray-400"
-      >
-        Export to CSV
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={onExportClick}
+          disabled={Object.keys(projects).length === 0}
+          className="px-3 py-1 text-white border border-white rounded text-sm cursor-pointer disabled:bg-gray-600 disabled:cursor-not-allowed disabled:border-gray-400"
+        >
+          Export to CSV
+        </button>
+        <button
+          onClick={onJiraExportClick}
+          disabled={Object.keys(projects).length === 0}
+          className="px-3 py-1 text-white border border-blue-400 rounded text-sm cursor-pointer disabled:bg-gray-600 disabled:cursor-not-allowed disabled:border-gray-400"
+        >
+          Export to Jira
+        </button>
+      </div>
     </div>
   );
 };
