@@ -56,8 +56,6 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
     for (let i = 0; i < entriesToExport.length; i++) {
       if (abortRef.current) break;
 
-      const entry = entriesToExport[i];
-
       setExportEntries((prev) =>
         prev.map((e, idx) =>
           idx === i ? { ...e, status: "in_progress" } : e
