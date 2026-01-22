@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, FC, ChangeEvent } from "react";
-import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeEntry } from "../types";
+import { RoundMode, RoundInt, DisplayMode, TargetHoursMode, ProjectExportData, ProjectData, TimeEntry } from "../types";
 import { parseCSV } from "../utils/csv";
 import { groupAndMerge } from "../utils/data";
 import { exportToCSV } from "../utils/export";
-import { isRoundMode, isRoundInt, isDisplayMode } from "../utils/validators";
+import { isRoundMode, isRoundInt, isDisplayMode, isTargetHoursMode } from "../utils/validators";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useCredentialStore } from "../hooks/useCredentialStore";
 import { Controls } from "../components/Controls";
@@ -49,6 +49,13 @@ const CsvTablePage: FC = () => {
     isDisplayMode
   );
   const [targetHours, setTargetHours] = useLocalStorage("targetHours", 0);
+  const [targetHoursMode, setTargetHoursMode] = useLocalStorage<TargetHoursMode>(
+    "targetHoursMode",
+    "total",
+    isTargetHoursMode
+  );
+  const [workingDays, setWorkingDays] = useLocalStorage("workingDays", 0);
+  const [hoursPerDay, setHoursPerDay] = useLocalStorage("hoursPerDay", 8);
   const [skipCoeffOnStar, setSkipCoeffOnStar] = useLocalStorage("skipCoeffOnStar", false);
 
   const [credentialState, credentialActions] = useCredentialStore();
@@ -176,6 +183,12 @@ const CsvTablePage: FC = () => {
           displayMode={displayMode}
           targetHours={targetHours}
           setTargetHours={setTargetHours}
+          targetHoursMode={targetHoursMode}
+          setTargetHoursMode={setTargetHoursMode}
+          workingDays={workingDays}
+          setWorkingDays={setWorkingDays}
+          hoursPerDay={hoursPerDay}
+          setHoursPerDay={setHoursPerDay}
           projects={projects}
           selectedProject={selectedProject}
           setSelectedProject={setSelectedProject}

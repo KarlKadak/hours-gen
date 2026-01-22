@@ -48,13 +48,13 @@ export const Controls: FC<ControlsProps> = ({
         />
       </label>
       <label>
+        <b>Skip coefficient on starred rows:</b>
         <input
           type="checkbox"
           checked={skipCoeffOnStar}
           onChange={(e) => setSkipCoeffOnStar(e.target.checked)}
-          className="mr-2"
+          className="ml-2"
         />
-        Skip coefficient on &quot;* &quot; rows
       </label>
       <label>
         <b>Rounding:</b>

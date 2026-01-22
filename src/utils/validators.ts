@@ -1,4 +1,4 @@
-import { RoundMode, RoundInt, DisplayMode } from "../types";
+import { RoundMode, RoundInt, DisplayMode, TargetHoursMode } from "../types";
 
 export const isRoundMode = (value: unknown): value is RoundMode =>
   typeof value === "string" &&
@@ -9,3 +9,6 @@ export const isRoundInt = (value: unknown): value is RoundInt =>
 
 export const isDisplayMode = (value: unknown): value is DisplayMode =>
   typeof value === "string" && ["decimal", "hhmm"].includes(value);
+
+export const isTargetHoursMode = (value: unknown): value is TargetHoursMode =>
+  typeof value === "string" && ["total", "workingDays"].includes(value);

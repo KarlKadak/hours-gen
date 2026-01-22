@@ -1,8 +1,7 @@
 import { FC } from "react";
-import { RoundMode } from "../types";
+import { RoundMode, TargetHoursMode, ProjectData } from "../types";
 import { formatDuration } from "../utils/duration";
-
-import { ProjectData } from "../types";
+import { isTargetHoursMode } from "../utils/validators";
 
 interface SummaryProps {
   totalHours: number;
@@ -10,6 +9,12 @@ interface SummaryProps {
   displayMode: "decimal" | "hhmm";
   targetHours: number;
   setTargetHours: (value: number) => void;
+  targetHoursMode: TargetHoursMode;
+  setTargetHoursMode: (value: TargetHoursMode) => void;
+  workingDays: number;
+  setWorkingDays: (value: number) => void;
+  hoursPerDay: number;
+  setHoursPerDay: (value: number) => void;
   projects: ProjectData;
   selectedProject: string;
   setSelectedProject: (value: string) => void;
@@ -23,12 +28,20 @@ export const Summary: FC<SummaryProps> = ({
   displayMode,
   targetHours,
   setTargetHours,
+  targetHoursMode,
+  setTargetHoursMode,
+  workingDays,
+  setWorkingDays,
+  hoursPerDay,
+  setHoursPerDay,
   projects,
   selectedProject,
   setSelectedProject,
   onExportClick,
   onJiraExportClick,
 }) => {
+  const effectiveTargetHours =
+    targetHoursMode === "total" ? targetHours : workingDays * hoursPerDay;
   return (
     <div className="flex flex-col gap-2 w-fit">
       <div>
@@ -37,20 +50,57 @@ export const Summary: FC<SummaryProps> = ({
       </div>
       <div>
         <b>Target hours:</b>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={targetHours || ""}
-          onChange={(e) => setTargetHours(parseFloat(e.target.value) || 0)}
-          className="w-20 ml-2"
-        />
+        <select
+          value={targetHoursMode}
+          onChange={(e) =>
+            isTargetHoursMode(e.target.value) && setTargetHoursMode(e.target.value)
+          }
+          className="ml-2"
+        >
+          <option value="total">Total</option>
+          <option value="workingDays">Working days</option>
+        </select>
+        {targetHoursMode === "total" ? (
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={targetHours || ""}
+            onChange={(e) => setTargetHours(parseFloat(e.target.value) || 0)}
+            className="w-20 ml-2"
+          />
+        ) : (
+          <>
+            <input
+              type="number"
+              step="1"
+              min="0"
+              value={workingDays || ""}
+              onChange={(e) => setWorkingDays(parseInt(e.target.value) || 0)}
+              className="w-16 ml-2"
+              placeholder="days"
+            />
+            <span className="mx-1">×</span>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              value={hoursPerDay || ""}
+              onChange={(e) => setHoursPerDay(parseFloat(e.target.value) || 0)}
+              className="w-16"
+              placeholder="h/day"
+            />
+            <span className="ml-2 text-gray-400">
+              = {(workingDays * hoursPerDay).toFixed(1)}h
+            </span>
+          </>
+        )}
       </div>
-      {targetHours > 0 && (
+      {effectiveTargetHours > 0 && (
         <div>
           <b>Completion:</b>
           <span className="ml-2">
-            {((totalHours / targetHours) * 100).toFixed(1)}%
+            {((totalHours / effectiveTargetHours) * 100).toFixed(1)}%
           </span>
         </div>
       )}
