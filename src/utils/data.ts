@@ -1,6 +1,12 @@
 import { RoundMode, RoundInt, TimeEntry, ProjectData } from "../types";
 import { roundDuration } from "./duration";
 
+// Parse DD/MM/YYYY date string to Date object
+function parseDDMMYYYY(dateStr: string): Date {
+  const [day, month, year] = dateStr.split("/").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 export const groupAndMerge = (
   rows: Record<string, string>[],
   coeff: number,
@@ -37,8 +43,8 @@ export const groupAndMerge = (
     }
     result[project] = Object.values(merged).sort((a: TimeEntry, b: TimeEntry) => {
       return (
-        new Date(a["Start Date"] as string).getTime() -
-        new Date(b["Start Date"] as string).getTime()
+        parseDDMMYYYY(a["Start Date"] as string).getTime() -
+        parseDDMMYYYY(b["Start Date"] as string).getTime()
       );
     });
   }

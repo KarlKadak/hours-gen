@@ -1,5 +1,11 @@
 import { JiraCredential, TimeEntry } from "../types";
 
+// Convert DD/MM/YYYY to YYYY-MM-DD format for Tempo API
+function toISODate(dateStr: string): string {
+  const [day, month, year] = dateStr.split("/");
+  return `${year}-${month}-${day}`;
+}
+
 export function extractIssueKey(description: string): string | null {
   const match = description.match(/^([A-Z]+-\d+)/);
   return match ? match[1] : null;
@@ -132,7 +138,7 @@ export async function exportWorklog({
 
   onProgress?.(`Creating worklog for ${issueKey}...`);
 
-  const date = entry["Start Date"] as string;
+  const date = toISODate(entry["Start Date"] as string);
   const hours = entry["Duration (decimal)"] as number;
   const seconds = hoursToSeconds(hours);
 
