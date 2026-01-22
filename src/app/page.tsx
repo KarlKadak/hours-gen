@@ -38,12 +38,13 @@ const CsvTablePage: FC = () => {
     isDisplayMode
   );
   const [targetHours, setTargetHours] = useLocalStorage("targetHours", 0);
+  const [skipCoeffOnStar, setSkipCoeffOnStar] = useLocalStorage("skipCoeffOnStar", false);
 
   useEffect(() => {
     if (csvRows.length > 0) {
-      setProjects(groupAndMerge(csvRows, coeff, roundMode, roundInt));
+      setProjects(groupAndMerge(csvRows, coeff, roundMode, roundInt, skipCoeffOnStar));
     }
-  }, [csvRows, coeff, roundMode, roundInt]);
+  }, [csvRows, coeff, roundMode, roundInt, skipCoeffOnStar]);
 
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -94,6 +95,8 @@ const CsvTablePage: FC = () => {
           setRoundInt={setRoundInt}
           displayMode={displayMode}
           setDisplayMode={setDisplayMode}
+          skipCoeffOnStar={skipCoeffOnStar}
+          setSkipCoeffOnStar={setSkipCoeffOnStar}
           onFileChange={handleFile}
         />
 

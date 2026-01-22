@@ -12,6 +12,8 @@ interface ControlsProps {
   setRoundInt: (value: RoundInt) => void;
   displayMode: DisplayMode;
   setDisplayMode: (value: DisplayMode) => void;
+  skipCoeffOnStar: boolean;
+  setSkipCoeffOnStar: (value: boolean) => void;
   onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
 }
 
@@ -24,6 +26,8 @@ export const Controls: FC<ControlsProps> = ({
   setRoundInt,
   displayMode,
   setDisplayMode,
+  skipCoeffOnStar,
+  setSkipCoeffOnStar,
   onFileChange,
 }) => {
   return (
@@ -42,6 +46,15 @@ export const Controls: FC<ControlsProps> = ({
           onChange={(e) => setCoeff(parseFloat(e.target.value) || 1)}
           className="w-20 ml-2"
         />
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={skipCoeffOnStar}
+          onChange={(e) => setSkipCoeffOnStar(e.target.checked)}
+          className="mr-2"
+        />
+        Skip coefficient on &quot;* &quot; rows
       </label>
       <label>
         <b>Rounding:</b>

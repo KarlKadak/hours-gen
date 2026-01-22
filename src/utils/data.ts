@@ -5,7 +5,8 @@ export const groupAndMerge = (
   rows: Record<string, string>[],
   coeff: number,
   roundMode: RoundMode,
-  roundInt: RoundInt
+  roundInt: RoundInt,
+  skipCoeffOnStar: boolean = false
 ): ProjectData => {
   const projects: Record<string, Record<string, string>[]> = {};
   for (const row of rows) {
@@ -21,7 +22,10 @@ export const groupAndMerge = (
       const date = entry["Start Date"];
       const mergeKey = `${desc}__${date}`;
       let dur = parseFloat(entry["Duration (decimal)"] || "0");
-      dur *= coeff;
+      const shouldSkipCoeff = skipCoeffOnStar && desc?.startsWith("* ");
+      if (!shouldSkipCoeff) {
+        dur *= coeff;
+      }
       let mins = dur * 60;
       mins = roundDuration(mins, roundMode, roundInt);
       if (!merged[mergeKey]) {
