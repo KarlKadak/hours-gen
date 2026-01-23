@@ -45,6 +45,83 @@ export interface CreateWorklogResult {
   error?: string;
 }
 
+interface TempoWorklog {
+  tempoWorklogId: number;
+  issue: {
+    id: number;
+  };
+  timeSpentSeconds: number;
+  startDate: string;
+  description?: string;
+}
+
+async function getExistingWorklogs(
+  credential: JiraCredential,
+  date: string
+): Promise<TempoWorklog[]> {
+  const response = await fetch(
+    `https://api.tempo.io/4/worklogs/user/${credential.atlassianAccountId}?from=${date}&to=${date}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${credential.tempoApiToken}`,
+        Accept: "application/json",
+      },
+    }
+  );
+
+  if (response.ok) {
+    const data = await response.json();
+    return data.results || [];
+  }
+
+  return [];
+}
+
+async function updateTempoWorklog(
+  credential: JiraCredential,
+  worklogId: number,
+  issueId: number,
+  date: string,
+  seconds: number,
+  description: string = ""
+): Promise<CreateWorklogResult> {
+  const payload = {
+    issueId,
+    timeSpentSeconds: seconds,
+    startDate: date,
+    startTime: "09:00:00",
+    authorAccountId: credential.atlassianAccountId,
+    description,
+  };
+
+  const response = await fetch(
+    `https://api.tempo.io/4/worklogs/${worklogId}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${credential.tempoApiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (response.ok) {
+    return { success: true };
+  }
+
+  let errorMsg = `HTTP ${response.status}`;
+  try {
+    const data = await response.json();
+    errorMsg = data.errors?.[0]?.message || JSON.stringify(data).slice(0, 100);
+  } catch {
+    // Keep default error message
+  }
+
+  return { success: false, error: errorMsg };
+}
+
 export async function createTempoWorklog(
   credential: JiraCredential,
   issueId: number,
@@ -52,6 +129,25 @@ export async function createTempoWorklog(
   seconds: number,
   description: string = ""
 ): Promise<CreateWorklogResult> {
+  // Check for existing worklog for this issue on this date
+  const existingWorklogs = await getExistingWorklogs(credential, date);
+  const existingWorklog = existingWorklogs.find(
+    (w) => w.issue.id === issueId
+  );
+
+  if (existingWorklog) {
+    // Update existing worklog instead of creating a new one
+    return updateTempoWorklog(
+      credential,
+      existingWorklog.tempoWorklogId,
+      issueId,
+      date,
+      seconds,
+      description
+    );
+  }
+
+  // No existing worklog, create a new one
   const payload = {
     issueId,
     timeSpentSeconds: seconds,
