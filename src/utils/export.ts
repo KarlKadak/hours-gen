@@ -21,7 +21,9 @@ export const exportToCSV = (
 
       entries.forEach((entry) => {
         const date = entry["Start Date"] || "";
-        const task = entry["Description"] || "";
+        const rawTask = entry["Description"] || "";
+        // Strip "* " prefix used to indicate non-coefficient entries
+        const task = rawTask.startsWith("* ") ? rawTask.slice(2) : rawTask;
         const hours = entry["Duration (decimal)"] || 0;
 
         csvRows.push(
