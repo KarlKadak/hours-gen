@@ -7,6 +7,11 @@ function parseDDMMYYYY(dateStr: string): Date {
   return new Date(year, month - 1, day);
 }
 
+// Strip "* " prefix used to indicate non-coefficient entries
+function normalizeDescription(desc: string): string {
+  return desc?.startsWith("* ") ? desc.slice(2) : desc;
+}
+
 export const groupAndMerge = (
   rows: Record<string, string>[],
   coeff: number,
@@ -25,8 +30,10 @@ export const groupAndMerge = (
     const merged: Record<string, TimeEntry> = {};
     for (const entry of entries) {
       const desc = entry["Description"];
+      const normalizedDesc = normalizeDescription(desc);
       const date = entry["Start Date"];
-      const mergeKey = `${desc}__${date}`;
+      // Use normalized description for merge key so "* ABC-123" and "ABC-123" merge together
+      const mergeKey = `${normalizedDesc}__${date}`;
       let dur = parseFloat(entry["Duration (decimal)"] || "0");
       const shouldSkipCoeff = skipCoeffOnStar && desc?.startsWith("* ");
       if (!shouldSkipCoeff) {
@@ -35,7 +42,8 @@ export const groupAndMerge = (
       let mins = dur * 60;
       mins = roundDuration(mins, roundMode, roundInt);
       if (!merged[mergeKey]) {
-        merged[mergeKey] = { ...entry, "Duration (decimal)": mins / 60 } as TimeEntry;
+        // Store with normalized description (star prefix stripped)
+        merged[mergeKey] = { ...entry, "Description": normalizedDesc, "Duration (decimal)": mins / 60 } as TimeEntry;
       } else {
         merged[mergeKey]["Duration (decimal)"] =
           (merged[mergeKey]["Duration (decimal)"] as number) + mins / 60;

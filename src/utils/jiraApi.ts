@@ -7,9 +7,7 @@ function toISODate(dateStr: string): string {
 }
 
 export function extractIssueKey(description: string): string | null {
-  // Strip "* " prefix used to indicate non-coefficient entries
-  const normalized = description.startsWith("* ") ? description.slice(2) : description;
-  const match = normalized.match(/^([A-Z]+-\d+)/);
+  const match = description.match(/^([A-Z]+-\d+)/);
   return match ? match[1] : null;
 }
 
