@@ -1,5 +1,20 @@
 import { JiraCredential, TimeEntry } from "../types";
 
+const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
+
+async function proxyFetch(
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const headers = new Headers(options.headers);
+  headers.set("x-target-url", url);
+
+  return fetch(PROXY_URL, {
+    ...options,
+    headers,
+  });
+}
+
 // Convert DD/MM/YYYY to YYYY-MM-DD format for Tempo API
 function toISODate(dateStr: string): string {
   const [day, month, year] = dateStr.split("/");
@@ -21,7 +36,7 @@ export async function getJiraIssueId(
 ): Promise<number | null> {
   const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
 
-  const response = await fetch(
+  const response = await proxyFetch(
     `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}?fields=id`,
     {
       method: "GET",
@@ -59,7 +74,7 @@ async function getExistingWorklogs(
   credential: JiraCredential,
   date: string
 ): Promise<TempoWorklog[]> {
-  const response = await fetch(
+  const response = await proxyFetch(
     `https://api.tempo.io/4/worklogs/user/${credential.atlassianAccountId}?from=${date}&to=${date}`,
     {
       method: "GET",
@@ -95,7 +110,7 @@ async function updateTempoWorklog(
     description,
   };
 
-  const response = await fetch(
+  const response = await proxyFetch(
     `https://api.tempo.io/4/worklogs/${worklogId}`,
     {
       method: "PUT",
@@ -157,7 +172,7 @@ export async function createTempoWorklog(
     description,
   };
 
-  const response = await fetch("https://api.tempo.io/4/worklogs", {
+  const response = await proxyFetch("https://api.tempo.io/4/worklogs", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${credential.tempoApiToken}`,
