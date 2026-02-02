@@ -39,7 +39,7 @@ export interface JiraExportEntry {
   issueKey: string;
   hours: number;
   description: string;
-  status: "pending" | "in_progress" | "success" | "error";
+  status: "pending" | "in_progress" | "created" | "updated" | "error";
   error?: string;
 }
 

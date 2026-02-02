@@ -23,7 +23,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportEntries, setExportEntries] = useState<JiraExportEntry[]>([]);
   const [currentMessage, setCurrentMessage] = useState<string>("");
-  const [stats, setStats] = useState({ success: 0, fail: 0, total: 0 });
+  const [stats, setStats] = useState({ created: 0, updated: 0, fail: 0, total: 0 });
   const abortRef = useRef(false);
 
   const validEntries = entries.filter((e) => extractIssueKey(e["Description"] as string));
@@ -48,9 +48,10 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
 
     const entriesToExport = prepareEntries();
     setExportEntries(entriesToExport);
-    setStats({ success: 0, fail: 0, total: entriesToExport.length });
+    setStats({ created: 0, updated: 0, fail: 0, total: entriesToExport.length });
 
-    let successCount = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
     let failCount = 0;
 
     for (let i = 0; i < entriesToExport.length; i++) {
@@ -71,10 +72,14 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
       });
 
       if (result.success) {
-        successCount++;
+        if (result.wasUpdated) {
+          updatedCount++;
+        } else {
+          createdCount++;
+        }
         setExportEntries((prev) =>
           prev.map((e, idx) =>
-            idx === i ? { ...e, status: "success" } : e
+            idx === i ? { ...e, status: result.wasUpdated ? "updated" : "created" } : e
           )
         );
       } else {
@@ -86,7 +91,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
         );
       }
 
-      setStats({ success: successCount, fail: failCount, total: entriesToExport.length });
+      setStats({ created: createdCount, updated: updatedCount, fail: failCount, total: entriesToExport.length });
 
       // Small delay to avoid rate limiting
       if (i < entriesToExport.length - 1 && !abortRef.current) {
@@ -108,7 +113,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
 
   const progressPercent =
     stats.total > 0
-      ? Math.round(((stats.success + stats.fail) / stats.total) * 100)
+      ? Math.round(((stats.created + stats.updated + stats.fail) / stats.total) * 100)
       : 0;
 
   const isComplete = !isExporting && exportEntries.length > 0;
@@ -235,7 +240,10 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
             {/* Stats */}
             <div className="flex gap-4 mb-4 text-sm">
               <span className="text-green-400">
-                Success: {stats.success}
+                Created: {stats.created}
+              </span>
+              <span className="text-yellow-400">
+                Updated: {stats.updated}
               </span>
               <span className="text-red-400">
                 Failed: {stats.fail}
@@ -271,8 +279,11 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
                         {entry.status === "in_progress" && (
                           <span className="text-blue-400 animate-pulse">...</span>
                         )}
-                        {entry.status === "success" && (
-                          <span className="text-green-400">OK</span>
+                        {entry.status === "created" && (
+                          <span className="text-green-400">NEW</span>
+                        )}
+                        {entry.status === "updated" && (
+                          <span className="text-yellow-400">UPD</span>
                         )}
                         {entry.status === "error" && (
                           <span

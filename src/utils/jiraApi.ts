@@ -58,6 +58,7 @@ export async function getJiraIssueId(
 export interface CreateWorklogResult {
   success: boolean;
   error?: string;
+  wasUpdated?: boolean;
 }
 
 interface TempoWorklog {
@@ -123,7 +124,7 @@ async function updateTempoWorklog(
   );
 
   if (response.ok) {
-    return { success: true };
+    return { success: true, wasUpdated: true };
   }
 
   let errorMsg = `HTTP ${response.status}`;
@@ -182,7 +183,7 @@ export async function createTempoWorklog(
   });
 
   if (response.ok) {
-    return { success: true };
+    return { success: true, wasUpdated: false };
   }
 
   let errorMsg = `HTTP ${response.status}`;
@@ -206,6 +207,7 @@ export interface ExportWorklogResult {
   success: boolean;
   error?: string;
   issueKey: string;
+  wasUpdated?: boolean;
 }
 
 const issueIdCache: Record<string, Record<string, number>> = {};
