@@ -1,5 +1,14 @@
 import { ProjectExportData, ProjectData } from "../types";
 
+const stripBracketContent = (text: string): string => {
+  return text.replace(/\([^)]*\)\s*/g, "").trim();
+};
+
+const truncate = (text: string, maxLength: number): string => {
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength - 3) + "...";
+};
+
 export const exportToCSV = (
   projects: ProjectData,
   selectedProject: string,
@@ -11,7 +20,6 @@ export const exportToCSV = (
       : { [selectedProject]: projects[selectedProject] || [] };
 
   const csvRows: string[] = [];
-  csvRows.push("Kuupäev,Klient,Projekt,Ülesanne,Tunnid");
 
   Object.entries(projectsToExport).forEach(
     ([originalProjectName, entries]) => {
@@ -21,7 +29,7 @@ export const exportToCSV = (
 
       entries.forEach((entry) => {
         const date = entry["Start Date"] || "";
-        const task = entry["Description"] || "";
+        const task = truncate(stripBracketContent(entry["Description"] || ""), 40);
         const hours = entry["Duration (decimal)"] || 0;
 
         csvRows.push(
