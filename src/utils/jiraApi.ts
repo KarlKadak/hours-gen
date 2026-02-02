@@ -257,8 +257,7 @@ export async function exportWorklog({
     credential,
     issueId,
     date,
-    seconds,
-    description
+    seconds
   );
 
   return {
