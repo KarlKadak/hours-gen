@@ -1,7 +1,24 @@
 export type RoundMode = "keep" | "standard" | "down" | "up";
 export type RoundInt = 5 | 10 | 15 | 30 | 60;
 export type DisplayMode = "decimal" | "hhmm";
-export type TargetHoursMode = "total" | "workingDays";
+
+export interface HolidayEntry {
+  date: string;
+  end_date: string | null;
+  title: string;
+  notes: string | null;
+  kind: string;
+  kind_id: string;
+}
+
+export interface TargetHoursConfig {
+  workingDays: number;
+  workload: number; // 0-1, where 1 = 100% = 8h/day
+  holidays: number;
+  shortenedDays: number;
+  month: number; // 1-12
+  year: number;
+}
 
 export interface ProjectExportData {
   projectName: string;

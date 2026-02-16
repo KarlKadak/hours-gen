@@ -40,7 +40,7 @@ export const Controls: FC<ControlsProps> = ({
         <b>Duration coefficient:</b>
         <input
           type="number"
-          step="0.00001"
+          step="0.01"
           min="0"
           value={coeff}
           onChange={(e) => setCoeff(parseFloat(e.target.value) || 1)}

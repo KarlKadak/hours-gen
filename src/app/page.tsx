@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, FC, ChangeEvent } from "react";
-import { RoundMode, RoundInt, DisplayMode, TargetHoursMode, ProjectExportData, ProjectData, TimeEntry } from "../types";
+import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeEntry, TargetHoursConfig } from "../types";
 import { parseCSV } from "../utils/csv";
 import { groupAndMerge } from "../utils/data";
 import { exportToCSV } from "../utils/export";
-import { isRoundMode, isRoundInt, isDisplayMode, isTargetHoursMode } from "../utils/validators";
+import { getWorkingDaysInMonth } from "../utils/holidays";
+import { isRoundMode, isRoundInt, isDisplayMode } from "../utils/validators";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useCredentialStore } from "../hooks/useCredentialStore";
 import { Controls } from "../components/Controls";
@@ -15,13 +16,42 @@ import { ExportModal } from "../components/ExportModal";
 import { PasswordModal } from "../components/PasswordModal";
 import { CredentialModal } from "../components/CredentialModal";
 import { JiraExportModal } from "../components/JiraExportModal";
+import { TargetHoursModal } from "../components/TargetHoursModal";
 
 type ModalState =
   | { type: "none" }
   | { type: "csvExport" }
   | { type: "password"; mode: "create" | "unlock"; nextModal?: "credentials" | "jiraExport" }
   | { type: "credentials" }
-  | { type: "jiraExport" };
+  | { type: "jiraExport" }
+  | { type: "targetHours" };
+
+function getDefaultTargetConfig(): TargetHoursConfig {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  return {
+    workingDays: getWorkingDaysInMonth(year, month),
+    workload: 1,
+    holidays: 0,
+    shortenedDays: 0,
+    month,
+    year,
+  };
+}
+
+const isTargetHoursConfig = (value: unknown): value is TargetHoursConfig => {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.workingDays === "number" &&
+    typeof v.workload === "number" &&
+    typeof v.holidays === "number" &&
+    typeof v.shortenedDays === "number" &&
+    typeof v.month === "number" &&
+    typeof v.year === "number"
+  );
+};
 
 const CsvTablePage: FC = () => {
   const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
@@ -48,14 +78,11 @@ const CsvTablePage: FC = () => {
     "decimal",
     isDisplayMode
   );
-  const [targetHours, setTargetHours] = useLocalStorage("targetHours", 0);
-  const [targetHoursMode, setTargetHoursMode] = useLocalStorage<TargetHoursMode>(
-    "targetHoursMode",
-    "total",
-    isTargetHoursMode
+  const [targetConfig, setTargetConfig] = useLocalStorage<TargetHoursConfig>(
+    "targetHoursConfig",
+    getDefaultTargetConfig(),
+    isTargetHoursConfig
   );
-  const [workingDays, setWorkingDays] = useLocalStorage("workingDays", 0);
-  const [hoursPerDay, setHoursPerDay] = useLocalStorage("hoursPerDay", 8);
   const [skipCoeffOnStar, setSkipCoeffOnStar] = useLocalStorage("skipCoeffOnStar", false);
 
   const [credentialState, credentialActions] = useCredentialStore();
@@ -181,19 +208,13 @@ const CsvTablePage: FC = () => {
           totalHours={totalHours}
           roundMode={roundMode}
           displayMode={displayMode}
-          targetHours={targetHours}
-          setTargetHours={setTargetHours}
-          targetHoursMode={targetHoursMode}
-          setTargetHoursMode={setTargetHoursMode}
-          workingDays={workingDays}
-          setWorkingDays={setWorkingDays}
-          hoursPerDay={hoursPerDay}
-          setHoursPerDay={setHoursPerDay}
+          targetConfig={targetConfig}
           projects={projects}
           selectedProject={selectedProject}
           setSelectedProject={setSelectedProject}
           onExportClick={openExportModal}
           onJiraExportClick={openJiraExportModal}
+          onConfigureTarget={() => setModal({ type: "targetHours" })}
         />
       </div>
 
@@ -254,6 +275,14 @@ const CsvTablePage: FC = () => {
           projectName={getProjectNameForExport()}
           onClose={() => setModal({ type: "none" })}
           onManageCredentials={openCredentialsModal}
+        />
+      )}
+
+      {modal.type === "targetHours" && (
+        <TargetHoursModal
+          config={targetConfig}
+          setConfig={setTargetConfig}
+          onClose={() => setModal({ type: "none" })}
         />
       )}
     </main>

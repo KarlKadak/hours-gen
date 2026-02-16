@@ -1,47 +1,80 @@
 import { FC } from "react";
-import { RoundMode, TargetHoursMode, ProjectData } from "../types";
+import { RoundMode, TargetHoursConfig, ProjectData } from "../types";
 import { formatDuration } from "../utils/duration";
-import { isTargetHoursMode } from "../utils/validators";
+import { calculateTargetHours } from "../utils/holidays";
 
 interface SummaryProps {
   totalHours: number;
   roundMode: RoundMode;
   displayMode: "decimal" | "hhmm";
-  targetHours: number;
-  setTargetHours: (value: number) => void;
-  targetHoursMode: TargetHoursMode;
-  setTargetHoursMode: (value: TargetHoursMode) => void;
-  workingDays: number;
-  setWorkingDays: (value: number) => void;
-  hoursPerDay: number;
-  setHoursPerDay: (value: number) => void;
+  targetConfig: TargetHoursConfig;
   projects: ProjectData;
   selectedProject: string;
   setSelectedProject: (value: string) => void;
   onExportClick: () => void;
   onJiraExportClick: () => void;
+  onConfigureTarget: () => void;
+}
+
+function getRollingTargetHours(config: TargetHoursConfig): number {
+  const now = new Date();
+  const isCurrentMonth =
+    now.getFullYear() === config.year && now.getMonth() + 1 === config.month;
+
+  if (!isCurrentMonth) {
+    return calculateTargetHours(
+      config.workingDays,
+      config.workload,
+      config.holidays,
+      config.shortenedDays
+    );
+  }
+
+  const today = now.getDate();
+
+  // Count working days up to today
+  let workingDaysSoFar = 0;
+  for (let d = 1; d <= today; d++) {
+    const date = new Date(config.year, config.month - 1, d);
+    const day = date.getDay();
+    if (day !== 0 && day !== 6) workingDaysSoFar++;
+  }
+
+  // Proportional: (working days so far / total working days) * total target
+  const totalFullTarget = calculateTargetHours(
+    config.workingDays,
+    config.workload,
+    config.holidays,
+    config.shortenedDays
+  );
+
+  if (config.workingDays === 0) return 0;
+  return (workingDaysSoFar / config.workingDays) * totalFullTarget;
 }
 
 export const Summary: FC<SummaryProps> = ({
   totalHours,
   roundMode,
   displayMode,
-  targetHours,
-  setTargetHours,
-  targetHoursMode,
-  setTargetHoursMode,
-  workingDays,
-  setWorkingDays,
-  hoursPerDay,
-  setHoursPerDay,
+  targetConfig,
   projects,
   selectedProject,
   setSelectedProject,
   onExportClick,
   onJiraExportClick,
+  onConfigureTarget,
 }) => {
-  const effectiveTargetHours =
-    targetHoursMode === "total" ? targetHours : workingDays * hoursPerDay;
+  const targetHours = calculateTargetHours(
+    targetConfig.workingDays,
+    targetConfig.workload,
+    targetConfig.holidays,
+    targetConfig.shortenedDays
+  );
+
+  const rollingTarget = getRollingTargetHours(targetConfig);
+  const completionPct = targetHours > 0 ? (totalHours / targetHours) * 100 : 0;
+  const rollingPct = rollingTarget > 0 ? (totalHours / rollingTarget) * 100 : 0;
+
   return (
     <div className="flex flex-col gap-2 w-fit">
       <div>
@@ -50,59 +83,29 @@ export const Summary: FC<SummaryProps> = ({
       </div>
       <div>
         <b>Target hours:</b>
-        <select
-          value={targetHoursMode}
-          onChange={(e) =>
-            isTargetHoursMode(e.target.value) && setTargetHoursMode(e.target.value)
-          }
-          className="ml-2"
+        <span className="ml-2">{targetHours.toFixed(1)}h</span>
+        <button
+          onClick={onConfigureTarget}
+          className="ml-2 px-2 py-0.5 text-xs text-white border border-gray-600 rounded cursor-pointer hover:bg-gray-800"
         >
-          <option value="total">Total</option>
-          <option value="workingDays">Working days</option>
-        </select>
-        {targetHoursMode === "total" ? (
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={targetHours || ""}
-            onChange={(e) => setTargetHours(parseFloat(e.target.value) || 0)}
-            className="w-20 ml-2"
-          />
-        ) : (
-          <>
-            <input
-              type="number"
-              step="1"
-              min="0"
-              value={workingDays || ""}
-              onChange={(e) => setWorkingDays(parseInt(e.target.value) || 0)}
-              className="w-16 ml-2"
-              placeholder="days"
-            />
-            <span className="mx-1">×</span>
-            <input
-              type="number"
-              step="0.5"
-              min="0"
-              value={hoursPerDay || ""}
-              onChange={(e) => setHoursPerDay(parseFloat(e.target.value) || 0)}
-              className="w-16"
-              placeholder="h/day"
-            />
-            <span className="ml-2 text-gray-400">
-              = {(workingDays * hoursPerDay).toFixed(1)}h
-            </span>
-          </>
-        )}
+          Configure
+        </button>
       </div>
-      {effectiveTargetHours > 0 && (
-        <div>
-          <b>Completion:</b>
-          <span className="ml-2">
-            {((totalHours / effectiveTargetHours) * 100).toFixed(1)}%
-          </span>
-        </div>
+      {targetHours > 0 && (
+        <>
+          <div>
+            <b>Completion:</b>
+            <span className="ml-2">
+              {formatDuration(totalHours, displayMode)} / {formatDuration(targetHours, displayMode)} ({completionPct.toFixed(1)}%)
+            </span>
+          </div>
+          <div>
+            <b>Rolling completion:</b>
+            <span className="ml-2">
+              {formatDuration(totalHours, displayMode)} / {formatDuration(rollingTarget, displayMode)} ({rollingPct.toFixed(1)}%)
+            </span>
+          </div>
+        </>
       )}
       <div>
         <label>
