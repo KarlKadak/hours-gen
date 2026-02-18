@@ -55,7 +55,8 @@ export function calculateTargetHours(
   workingDays: number,
   workload: number,
   holidays: number,
-  shortenedDays: number
+  shortenedDays: number,
+  vacationDays: number = 0
 ): number {
-  return (workingDays - holidays) * 8 * workload - shortenedDays * 3 * workload;
+  return (workingDays - holidays - vacationDays) * 8 * workload - shortenedDays * 3 * workload;
 }

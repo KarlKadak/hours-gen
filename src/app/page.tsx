@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FC, ChangeEvent } from "react";
+import { useState, useEffect, useRef, FC, ChangeEvent } from "react";
 import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeEntry, TargetHoursConfig } from "../types";
 import { parseCSV } from "../utils/csv";
 import { groupAndMerge } from "../utils/data";
@@ -34,6 +34,7 @@ function getDefaultTargetConfig(): TargetHoursConfig {
     workingDays: getWorkingDaysInMonth(year, month),
     workload: 1,
     holidays: 0,
+    vacationDays: 0,
     shortenedDays: 0,
     month,
     year,
@@ -43,14 +44,17 @@ function getDefaultTargetConfig(): TargetHoursConfig {
 const isTargetHoursConfig = (value: unknown): value is TargetHoursConfig => {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
-  return (
+  const valid =
     typeof v.workingDays === "number" &&
     typeof v.workload === "number" &&
     typeof v.holidays === "number" &&
     typeof v.shortenedDays === "number" &&
     typeof v.month === "number" &&
-    typeof v.year === "number"
-  );
+    typeof v.year === "number";
+  if (valid && typeof v.vacationDays !== "number") {
+    (v as Record<string, unknown>).vacationDays = 0;
+  }
+  return valid;
 };
 
 const CsvTablePage: FC = () => {
@@ -84,6 +88,32 @@ const CsvTablePage: FC = () => {
     isTargetHoursConfig
   );
   const [skipCoeffOnStar, setSkipCoeffOnStar] = useLocalStorage("skipCoeffOnStar", false);
+  const [vacationDaysByMonth, setVacationDaysByMonth] = useLocalStorage<Record<string, number>>(
+    "vacationDaysByMonth",
+    {}
+  );
+
+  const prevMonthKey = useRef<string>("");
+
+  // Sync vacationDays from per-month map when month/year changes
+  useEffect(() => {
+    const key = `${targetConfig.year}-${String(targetConfig.month).padStart(2, "0")}`;
+    if (key !== prevMonthKey.current) {
+      prevMonthKey.current = key;
+      const saved = vacationDaysByMonth[key] ?? 0;
+      if (saved !== targetConfig.vacationDays) {
+        setTargetConfig({ ...targetConfig, vacationDays: saved });
+      }
+    }
+  }, [targetConfig.month, targetConfig.year]);
+
+  // Write vacationDays back to per-month map when it changes
+  useEffect(() => {
+    const key = `${targetConfig.year}-${String(targetConfig.month).padStart(2, "0")}`;
+    if (vacationDaysByMonth[key] !== targetConfig.vacationDays) {
+      setVacationDaysByMonth({ ...vacationDaysByMonth, [key]: targetConfig.vacationDays });
+    }
+  }, [targetConfig.vacationDays]);
 
   const [credentialState, credentialActions] = useCredentialStore();
 

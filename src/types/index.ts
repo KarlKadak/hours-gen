@@ -15,6 +15,7 @@ export interface TargetHoursConfig {
   workingDays: number;
   workload: number; // 0-1, where 1 = 100% = 8h/day
   holidays: number;
+  vacationDays: number;
   shortenedDays: number;
   month: number; // 1-12
   year: number;

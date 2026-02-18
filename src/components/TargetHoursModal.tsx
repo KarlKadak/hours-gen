@@ -30,7 +30,8 @@ export const TargetHoursModal: FC<TargetHoursModalProps> = ({
     config.workingDays,
     config.workload,
     config.holidays,
-    config.shortenedDays
+    config.shortenedDays,
+    config.vacationDays
   );
 
   const update = (partial: Partial<TargetHoursConfig>) => {
@@ -149,6 +150,20 @@ export const TargetHoursModal: FC<TargetHoursModalProps> = ({
 
           <div>
             <label className="block text-sm font-medium mb-1">
+              Vacation days on working days
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={config.vacationDays}
+              onChange={(e) => setConfig({ ...config, vacationDays: parseInt(e.target.value) || 0 })}
+              className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">
               Shortened working days
             </label>
             <input
@@ -175,7 +190,7 @@ export const TargetHoursModal: FC<TargetHoursModalProps> = ({
 
           <div className="border-t border-gray-600 pt-4">
             <div className="text-sm text-gray-400">
-              ({config.workingDays} - {config.holidays}) &times; {(config.workload * 8).toFixed(1)} - {config.shortenedDays} &times; {(config.workload * 3).toFixed(1)} = <b className="text-white">{targetHours.toFixed(1)}h</b>
+              ({config.workingDays} - {config.holidays} - {config.vacationDays}) &times; {(config.workload * 8).toFixed(1)} - {config.shortenedDays} &times; {(config.workload * 3).toFixed(1)} = <b className="text-white">{targetHours.toFixed(1)}h</b>
             </div>
           </div>
         </div>

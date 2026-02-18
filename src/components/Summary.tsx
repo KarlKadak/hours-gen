@@ -26,7 +26,8 @@ function getRollingTargetHours(config: TargetHoursConfig): number {
       config.workingDays,
       config.workload,
       config.holidays,
-      config.shortenedDays
+      config.shortenedDays,
+      config.vacationDays
     );
   }
 
@@ -45,7 +46,8 @@ function getRollingTargetHours(config: TargetHoursConfig): number {
     config.workingDays,
     config.workload,
     config.holidays,
-    config.shortenedDays
+    config.shortenedDays,
+    config.vacationDays
   );
 
   if (config.workingDays === 0) return 0;
@@ -68,7 +70,8 @@ export const Summary: FC<SummaryProps> = ({
     targetConfig.workingDays,
     targetConfig.workload,
     targetConfig.holidays,
-    targetConfig.shortenedDays
+    targetConfig.shortenedDays,
+    targetConfig.vacationDays
   );
 
   const rollingTarget = getRollingTargetHours(targetConfig);
