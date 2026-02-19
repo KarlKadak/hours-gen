@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, FC, ChangeEvent } from "react";
+import { useState, useEffect, FC, ChangeEvent } from "react";
 import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeEntry, TargetHoursConfig } from "../types";
 import { parseCSV } from "../utils/csv";
 import { groupAndMerge } from "../utils/data";
@@ -87,59 +87,52 @@ const CsvTablePage: FC = () => {
     "decimal",
     isDisplayMode
   );
-  const [targetConfig, setTargetConfig] = useLocalStorage<TargetHoursConfig>(
+  const [activeConfig, setActiveConfig] = useLocalStorage<TargetHoursConfig>(
     "targetHoursConfig",
     getDefaultTargetConfig(),
     isTargetHoursConfig
   );
   const [skipCoeffOnStar, setSkipCoeffOnStar] = useLocalStorage("skipCoeffOnStar", false);
-  const [vacationDatesByMonth, setVacationDatesByMonth] = useLocalStorage<Record<string, string[]>>(
-    "vacationDatesByMonth",
-    {}
-  );
-  const [holidayDatesByMonth, setHolidayDatesByMonth] = useLocalStorage<Record<string, string[]>>(
-    "holidayDatesByMonth",
-    {}
-  );
-  const [shortenedDatesByMonth, setShortenedDatesByMonth] = useLocalStorage<Record<string, string[]>>(
-    "shortenedDatesByMonth",
+  const [configByMonth, setConfigByMonth] = useLocalStorage<Record<string, TargetHoursConfig>>(
+    "configByMonth",
     {}
   );
 
-  const prevMonthKey = useRef<string>("");
+  const targetConfig = activeConfig;
 
-  // Sync date arrays from per-month maps when month/year changes
-  useEffect(() => {
-    const key = `${targetConfig.year}-${String(targetConfig.month).padStart(2, "0")}`;
-    if (key !== prevMonthKey.current) {
-      prevMonthKey.current = key;
-      const savedVacation = vacationDatesByMonth[key] ?? [];
-      const savedHolidays = holidayDatesByMonth[key] ?? [];
-      const savedShortened = shortenedDatesByMonth[key] ?? [];
-      setTargetConfig({
-        ...targetConfig,
-        vacationDates: savedVacation,
-        vacationDays: savedVacation.length,
-        holidayDates: savedHolidays,
-        holidays: savedHolidays.length,
-        shortenedDates: savedShortened,
-        shortenedDays: savedShortened.length,
-      });
+  const setTargetConfig = (config: TargetHoursConfig) => {
+    const oldKey = `${activeConfig.year}-${String(activeConfig.month).padStart(2, "0")}`;
+    const newKey = `${config.year}-${String(config.month).padStart(2, "0")}`;
+
+    if (oldKey !== newKey) {
+      // Month/year changed — save current config, load or create config for new month
+      const updatedMap = { ...configByMonth, [oldKey]: activeConfig };
+      const saved = updatedMap[newKey];
+      if (saved) {
+        setActiveConfig(saved);
+      } else {
+        const defaultConfig: TargetHoursConfig = {
+          workingDays: getWorkingDaysInMonth(config.year, config.month),
+          workload: activeConfig.workload,
+          holidays: 0,
+          vacationDays: 0,
+          shortenedDays: 0,
+          holidayDates: [],
+          shortenedDates: [],
+          vacationDates: [],
+          month: config.month,
+          year: config.year,
+        };
+        setActiveConfig(defaultConfig);
+        updatedMap[newKey] = defaultConfig;
+      }
+      setConfigByMonth(updatedMap);
+    } else {
+      // Same month — update config and persist
+      setActiveConfig(config);
+      setConfigByMonth({ ...configByMonth, [newKey]: config });
     }
-  }, [targetConfig.month, targetConfig.year]);
-
-  // Write date arrays back to per-month maps when they change
-  useEffect(() => {
-    const key = `${targetConfig.year}-${String(targetConfig.month).padStart(2, "0")}`;
-    if (key === prevMonthKey.current) {
-      const vChanged = JSON.stringify(vacationDatesByMonth[key] ?? []) !== JSON.stringify(targetConfig.vacationDates);
-      const hChanged = JSON.stringify(holidayDatesByMonth[key] ?? []) !== JSON.stringify(targetConfig.holidayDates);
-      const sChanged = JSON.stringify(shortenedDatesByMonth[key] ?? []) !== JSON.stringify(targetConfig.shortenedDates);
-      if (vChanged) setVacationDatesByMonth({ ...vacationDatesByMonth, [key]: targetConfig.vacationDates });
-      if (hChanged) setHolidayDatesByMonth({ ...holidayDatesByMonth, [key]: targetConfig.holidayDates });
-      if (sChanged) setShortenedDatesByMonth({ ...shortenedDatesByMonth, [key]: targetConfig.shortenedDates });
-    }
-  }, [targetConfig.vacationDates, targetConfig.holidayDates, targetConfig.shortenedDates]);
+  };
 
   const [credentialState, credentialActions] = useCredentialStore();
 
