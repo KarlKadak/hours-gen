@@ -1,7 +1,7 @@
 import { FC } from "react";
 import { RoundMode, TargetHoursConfig, ProjectData } from "../types";
 import { formatDuration } from "../utils/duration";
-import { calculateTargetHours } from "../utils/holidays";
+import { calculateTargetHours, getDayTargetHours, formatDateISO } from "../utils/holidays";
 
 interface SummaryProps {
   totalHours: number;
@@ -32,26 +32,12 @@ function getRollingTargetHours(config: TargetHoursConfig): number {
   }
 
   const today = now.getDate();
-
-  // Count working days up to today
-  let workingDaysSoFar = 0;
+  let expectedHours = 0;
   for (let d = 1; d <= today; d++) {
-    const date = new Date(config.year, config.month - 1, d);
-    const day = date.getDay();
-    if (day !== 0 && day !== 6) workingDaysSoFar++;
+    const dateStr = formatDateISO(config.year, config.month, d);
+    expectedHours += getDayTargetHours(dateStr, config);
   }
-
-  // Proportional: (working days so far / total working days) * total target
-  const totalFullTarget = calculateTargetHours(
-    config.workingDays,
-    config.workload,
-    config.holidays,
-    config.shortenedDays,
-    config.vacationDays
-  );
-
-  if (config.workingDays === 0) return 0;
-  return (workingDaysSoFar / config.workingDays) * totalFullTarget;
+  return expectedHours;
 }
 
 export const Summary: FC<SummaryProps> = ({

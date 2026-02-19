@@ -36,6 +36,9 @@ function getDefaultTargetConfig(): TargetHoursConfig {
     holidays: 0,
     vacationDays: 0,
     shortenedDays: 0,
+    holidayDates: [],
+    shortenedDates: [],
+    vacationDates: [],
     month,
     year,
   };
@@ -51,10 +54,12 @@ const isTargetHoursConfig = (value: unknown): value is TargetHoursConfig => {
     typeof v.shortenedDays === "number" &&
     typeof v.month === "number" &&
     typeof v.year === "number";
-  if (valid && typeof v.vacationDays !== "number") {
-    (v as Record<string, unknown>).vacationDays = 0;
-  }
-  return valid;
+  if (!valid) return false;
+  if (typeof v.vacationDays !== "number") v.vacationDays = 0;
+  if (!Array.isArray(v.holidayDates)) v.holidayDates = [];
+  if (!Array.isArray(v.shortenedDates)) v.shortenedDates = [];
+  if (!Array.isArray(v.vacationDates)) v.vacationDates = [];
+  return true;
 };
 
 const CsvTablePage: FC = () => {
@@ -88,32 +93,53 @@ const CsvTablePage: FC = () => {
     isTargetHoursConfig
   );
   const [skipCoeffOnStar, setSkipCoeffOnStar] = useLocalStorage("skipCoeffOnStar", false);
-  const [vacationDaysByMonth, setVacationDaysByMonth] = useLocalStorage<Record<string, number>>(
-    "vacationDaysByMonth",
+  const [vacationDatesByMonth, setVacationDatesByMonth] = useLocalStorage<Record<string, string[]>>(
+    "vacationDatesByMonth",
+    {}
+  );
+  const [holidayDatesByMonth, setHolidayDatesByMonth] = useLocalStorage<Record<string, string[]>>(
+    "holidayDatesByMonth",
+    {}
+  );
+  const [shortenedDatesByMonth, setShortenedDatesByMonth] = useLocalStorage<Record<string, string[]>>(
+    "shortenedDatesByMonth",
     {}
   );
 
   const prevMonthKey = useRef<string>("");
 
-  // Sync vacationDays from per-month map when month/year changes
+  // Sync date arrays from per-month maps when month/year changes
   useEffect(() => {
     const key = `${targetConfig.year}-${String(targetConfig.month).padStart(2, "0")}`;
     if (key !== prevMonthKey.current) {
       prevMonthKey.current = key;
-      const saved = vacationDaysByMonth[key] ?? 0;
-      if (saved !== targetConfig.vacationDays) {
-        setTargetConfig({ ...targetConfig, vacationDays: saved });
-      }
+      const savedVacation = vacationDatesByMonth[key] ?? [];
+      const savedHolidays = holidayDatesByMonth[key] ?? [];
+      const savedShortened = shortenedDatesByMonth[key] ?? [];
+      setTargetConfig({
+        ...targetConfig,
+        vacationDates: savedVacation,
+        vacationDays: savedVacation.length,
+        holidayDates: savedHolidays,
+        holidays: savedHolidays.length,
+        shortenedDates: savedShortened,
+        shortenedDays: savedShortened.length,
+      });
     }
   }, [targetConfig.month, targetConfig.year]);
 
-  // Write vacationDays back to per-month map when it changes
+  // Write date arrays back to per-month maps when they change
   useEffect(() => {
     const key = `${targetConfig.year}-${String(targetConfig.month).padStart(2, "0")}`;
-    if (vacationDaysByMonth[key] !== targetConfig.vacationDays) {
-      setVacationDaysByMonth({ ...vacationDaysByMonth, [key]: targetConfig.vacationDays });
+    if (key === prevMonthKey.current) {
+      const vChanged = JSON.stringify(vacationDatesByMonth[key] ?? []) !== JSON.stringify(targetConfig.vacationDates);
+      const hChanged = JSON.stringify(holidayDatesByMonth[key] ?? []) !== JSON.stringify(targetConfig.holidayDates);
+      const sChanged = JSON.stringify(shortenedDatesByMonth[key] ?? []) !== JSON.stringify(targetConfig.shortenedDates);
+      if (vChanged) setVacationDatesByMonth({ ...vacationDatesByMonth, [key]: targetConfig.vacationDates });
+      if (hChanged) setHolidayDatesByMonth({ ...holidayDatesByMonth, [key]: targetConfig.holidayDates });
+      if (sChanged) setShortenedDatesByMonth({ ...shortenedDatesByMonth, [key]: targetConfig.shortenedDates });
     }
-  }, [targetConfig.vacationDays]);
+  }, [targetConfig.vacationDates, targetConfig.holidayDates, targetConfig.shortenedDates]);
 
   const [credentialState, credentialActions] = useCredentialStore();
 

@@ -17,6 +17,9 @@ export interface TargetHoursConfig {
   holidays: number;
   vacationDays: number;
   shortenedDays: number;
+  holidayDates: string[];    // "YYYY-MM-DD"
+  shortenedDates: string[];  // "YYYY-MM-DD"
+  vacationDates: string[];   // "YYYY-MM-DD"
   month: number; // 1-12
   year: number;
 }

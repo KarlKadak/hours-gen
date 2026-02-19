@@ -1,4 +1,4 @@
-import { HolidayEntry } from "../types";
+import { HolidayEntry, TargetHoursConfig } from "../types";
 
 const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
 const HOLIDAYS_URL = "https://xn--riigiphad-v9a.ee/et/luhendatud-toopaevad?output=json";
@@ -14,9 +14,13 @@ export async function fetchHolidays(): Promise<HolidayEntry[]> {
   return response.json();
 }
 
-function isWeekday(date: Date): boolean {
+export function isWeekday(date: Date): boolean {
   const day = date.getDay();
   return day !== 0 && day !== 6;
+}
+
+export function formatDateISO(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 export function getWorkingDaysInMonth(year: number, month: number): number {
@@ -32,23 +36,24 @@ export function filterHolidaysForMonth(
   holidays: HolidayEntry[],
   year: number,
   month: number
-): { holidays: number; shortenedDays: number } {
-  let holidayCount = 0;
-  let shortenedCount = 0;
+): { holidayDates: string[]; shortenedDates: string[] } {
+  const holidayDates: string[] = [];
+  const shortenedDates: string[] = [];
 
   for (const entry of holidays) {
     const date = new Date(entry.date);
     if (date.getFullYear() !== year || date.getMonth() + 1 !== month) continue;
     if (!isWeekday(date)) continue;
 
+    const dateStr = formatDateISO(year, month, date.getDate());
     if (entry.kind_id === "1" || entry.kind_id === "2") {
-      holidayCount++;
+      holidayDates.push(dateStr);
     } else if (entry.kind_id === "4") {
-      shortenedCount++;
+      shortenedDates.push(dateStr);
     }
   }
 
-  return { holidays: holidayCount, shortenedDays: shortenedCount };
+  return { holidayDates, shortenedDates };
 }
 
 export function calculateTargetHours(
@@ -59,4 +64,16 @@ export function calculateTargetHours(
   vacationDays: number = 0
 ): number {
   return (workingDays - holidays - vacationDays) * 8 * workload - shortenedDays * 3 * workload;
+}
+
+export function getDayTargetHours(
+  dateStr: string,
+  config: TargetHoursConfig
+): number {
+  const date = new Date(dateStr + "T00:00:00");
+  if (!isWeekday(date)) return 0;
+  if (config.holidayDates.includes(dateStr)) return 0;
+  if (config.vacationDates.includes(dateStr)) return 0;
+  if (config.shortenedDates.includes(dateStr)) return 5 * config.workload;
+  return 8 * config.workload;
 }
