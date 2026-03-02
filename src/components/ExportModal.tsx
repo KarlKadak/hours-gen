@@ -34,6 +34,7 @@ export const ExportModal: FC<ExportModalProps> = ({
               key={originalName}
               className="border-b border-gray-600 pb-4 last:border-b-0"
             >
+              <p className="text-xs text-gray-400 mb-2">Source: {originalName}</p>
               <div className="mb-2">
                 <label className="block text-sm font-medium mb-1">
                   Project Name:

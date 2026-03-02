@@ -29,6 +29,12 @@ export interface ProjectExportData {
   clientName: string;
 }
 
+export interface StoredProjectMapping {
+  projectName: string;
+  clientName: string;
+  lastExported: string; // ISO 8601 datetime
+}
+
 export interface TimeEntry {
   [key: string]: string | number;
   "Project": string;

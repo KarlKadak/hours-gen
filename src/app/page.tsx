@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, FC, ChangeEvent } from "react";
-import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeEntry, TargetHoursConfig } from "../types";
+import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeEntry, TargetHoursConfig, StoredProjectMapping } from "../types";
 import { parseCSV } from "../utils/csv";
 import { groupAndMerge } from "../utils/data";
 import { exportToCSV } from "../utils/export";
@@ -97,6 +97,10 @@ const CsvTablePage: FC = () => {
     "configByMonth",
     {}
   );
+  const [projectMappings, setProjectMappings] = useLocalStorage<Record<string, StoredProjectMapping>>(
+    "projectNameMappings",
+    {}
+  );
 
   const targetConfig = activeConfig;
 
@@ -160,9 +164,10 @@ const CsvTablePage: FC = () => {
 
     const initialData: Record<string, ProjectExportData> = {};
     projectsToExport.forEach((projectName) => {
+      const stored = projectMappings[projectName];
       initialData[projectName] = {
-        projectName,
-        clientName: "",
+        projectName: stored?.projectName ?? projectName,
+        clientName: stored?.clientName ?? "",
       };
     });
 
@@ -172,6 +177,24 @@ const CsvTablePage: FC = () => {
 
   const handleExportCSV = () => {
     exportToCSV(projects, selectedProject, exportData);
+
+    const now = new Date().toISOString();
+    const twoMonthsAgo = new Date(Date.now() - 2 * 30 * 24 * 60 * 60 * 1000).toISOString();
+    const updated = { ...projectMappings };
+    for (const [sourceProject, data] of Object.entries(exportData)) {
+      updated[sourceProject] = {
+        projectName: data.projectName,
+        clientName: data.clientName,
+        lastExported: now,
+      };
+    }
+    for (const [key, mapping] of Object.entries(updated)) {
+      if (mapping.lastExported < twoMonthsAgo) {
+        delete updated[key];
+      }
+    }
+    setProjectMappings(updated);
+
     setModal({ type: "none" });
   };
 
