@@ -61,8 +61,6 @@ export interface JiraCredential {
   atlassianAccountId: string;
   azureTenantId?: string;
   azureAppId?: string;
-  azureUsername?: string;
-  azurePassword?: string;
 }
 
 export interface EncryptedCredentialStore {

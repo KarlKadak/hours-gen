@@ -8,27 +8,35 @@ const AZURE_CLI_CLIENT_ID = "04b07795-a710-4e97-80c2-0a48a62aebe7";
 // Azure AD token cache
 const azureTokenCache: Record<string, { token: string; expiresAt: number }> = {};
 
-function hasAzureAdConfig(credential: JiraCredential): boolean {
-  return !!(credential.azureTenantId && credential.azureAppId && credential.azureUsername && credential.azurePassword);
+export function hasAzureAdConfig(credential: JiraCredential): boolean {
+  return !!(credential.azureTenantId && credential.azureAppId);
 }
 
-async function getAzureAdToken(credential: JiraCredential): Promise<string> {
-  const cacheKey = `${credential.azureTenantId}:${credential.azureUsername}`;
+export function getCachedAzureToken(credential: JiraCredential): string | null {
+  const cacheKey = `${credential.azureTenantId}:${credential.azureAppId}`;
   const cached = azureTokenCache[cacheKey];
   if (cached && cached.expiresAt > Date.now() + 60000) {
     return cached.token;
   }
+  return null;
+}
 
+export interface DeviceCodeInfo {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+
+export async function initiateDeviceCodeAuth(credential: JiraCredential): Promise<DeviceCodeInfo> {
   const body = new URLSearchParams({
-    grant_type: "password",
     client_id: AZURE_CLI_CLIENT_ID,
-    scope: `${credential.azureAppId}/.default openid`,
-    username: credential.azureUsername!,
-    password: credential.azurePassword!,
+    scope: `${credential.azureAppId}/.default`,
   });
 
   const response = await proxyFetch(
-    `https://login.microsoftonline.com/${credential.azureTenantId}/oauth2/v2.0/token`,
+    `https://login.microsoftonline.com/${credential.azureTenantId}/oauth2/v2.0/devicecode`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -38,27 +46,79 @@ async function getAzureAdToken(credential: JiraCredential): Promise<string> {
 
   const data = await response.json();
   if (!response.ok) {
-    const errorDesc = data.error_description || data.error || "Unknown Azure AD error";
-    throw new Error(`Azure AD auth failed: ${errorDesc}`);
+    throw new Error(data.error_description || data.error || "Failed to initiate device code flow");
   }
 
-  const token = data.access_token;
-  const expiresIn = data.expires_in || 3600;
-  azureTokenCache[cacheKey] = {
-    token,
-    expiresAt: Date.now() + expiresIn * 1000,
+  return {
+    deviceCode: data.device_code,
+    userCode: data.user_code,
+    verificationUri: data.verification_uri,
+    expiresIn: data.expires_in,
+    interval: data.interval || 5,
   };
-
-  return token;
 }
 
-async function getAppTimeAuthHeaders(credential: JiraCredential): Promise<Record<string, string>> {
+export async function pollDeviceCodeAuth(
+  credential: JiraCredential,
+  deviceCode: string,
+  interval: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  const body = new URLSearchParams({
+    grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+    client_id: AZURE_CLI_CLIENT_ID,
+    device_code: deviceCode,
+  });
+
+  const pollInterval = interval * 1000;
+
+  while (!signal?.aborted) {
+    await new Promise((r) => setTimeout(r, pollInterval));
+    if (signal?.aborted) break;
+
+    const response = await proxyFetch(
+      `https://login.microsoftonline.com/${credential.azureTenantId}/oauth2/v2.0/token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+      const cacheKey = `${credential.azureTenantId}:${credential.azureAppId}`;
+      const expiresIn = data.expires_in || 3600;
+      azureTokenCache[cacheKey] = {
+        token: data.access_token,
+        expiresAt: Date.now() + expiresIn * 1000,
+      };
+      return data.access_token;
+    }
+
+    if (data.error === "authorization_pending") {
+      continue;
+    } else if (data.error === "slow_down") {
+      await new Promise((r) => setTimeout(r, 5000));
+      continue;
+    } else {
+      throw new Error(data.error_description || data.error || "Device code auth failed");
+    }
+  }
+
+  throw new Error("Authentication cancelled");
+}
+
+function getAppTimeAuthHeaders(credential: JiraCredential): Record<string, string> {
   if (hasAzureAdConfig(credential)) {
-    const token = await getAzureAdToken(credential);
-    return {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    };
+    const token = getCachedAzureToken(credential);
+    if (token) {
+      return {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      };
+    }
   }
   const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
   return {
@@ -294,7 +354,7 @@ async function getExistingJiraWorklogs(
   issueKey: string,
   date: string
 ): Promise<JiraWorklog[]> {
-  const authHeaders = await getAppTimeAuthHeaders(credential);
+  const authHeaders = getAppTimeAuthHeaders(credential);
 
   const response = await proxyFetch(
     `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog`,
@@ -373,7 +433,7 @@ async function createJiraWorklog(
     );
   }
 
-  const authHeaders = await getAppTimeAuthHeaders(credential);
+  const authHeaders = getAppTimeAuthHeaders(credential);
   const payload = {
     timeSpentSeconds: seconds,
     started: `${date}T09:00:00.000+0000`,
@@ -416,7 +476,7 @@ async function updateJiraWorklog(
   seconds: number,
   comment: string = ""
 ): Promise<CreateWorklogResult> {
-  const authHeaders = await getAppTimeAuthHeaders(credential);
+  const authHeaders = getAppTimeAuthHeaders(credential);
 
   const payload = {
     timeSpentSeconds: seconds,
@@ -489,19 +549,6 @@ export async function exportWorklog({
   const comment = extractBracketComment(description);
 
   if (credential.type === "apptime") {
-    if (hasAzureAdConfig(credential)) {
-      onProgress?.(`Authenticating with Azure AD...`);
-      try {
-        await getAzureAdToken(credential);
-      } catch (e) {
-        return {
-          success: false,
-          error: e instanceof Error ? e.message : "Azure AD auth failed",
-          issueKey,
-        };
-      }
-    }
-
     onProgress?.(`Creating worklog for ${issueKey}...`);
 
     const result = await createJiraWorklog(

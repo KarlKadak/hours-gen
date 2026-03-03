@@ -20,8 +20,6 @@ interface CredentialFormData {
   atlassianAccountId: string;
   azureTenantId: string;
   azureAppId: string;
-  azureUsername: string;
-  azurePassword: string;
 }
 
 const emptyForm: CredentialFormData = {
@@ -34,8 +32,6 @@ const emptyForm: CredentialFormData = {
   atlassianAccountId: "",
   azureTenantId: "",
   azureAppId: "",
-  azureUsername: "",
-  azurePassword: "",
 };
 
 export const CredentialModal: FC<CredentialModalProps> = ({
@@ -69,8 +65,6 @@ export const CredentialModal: FC<CredentialModalProps> = ({
       atlassianAccountId: credential.atlassianAccountId,
       azureTenantId: credential.azureTenantId || "",
       azureAppId: credential.azureAppId || "",
-      azureUsername: credential.azureUsername || "",
-      azurePassword: credential.azurePassword || "",
     });
     setView("edit");
   };
@@ -232,26 +226,9 @@ export const CredentialModal: FC<CredentialModalProps> = ({
                 placeholder="e.g., b682f95e-314f-4361-..."
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Azure AD Username:</label>
-              <input
-                type="text"
-                value={formData.azureUsername}
-                onChange={(e) => setFormData({ ...formData, azureUsername: e.target.value })}
-                className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white text-sm"
-                placeholder="your.name@organization.com"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Azure AD Password:</label>
-              <input
-                type="password"
-                value={formData.azurePassword}
-                onChange={(e) => setFormData({ ...formData, azurePassword: e.target.value })}
-                className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white text-sm"
-                placeholder="Your Azure AD password"
-              />
-            </div>
+            <p className="text-xs text-gray-500">
+              You will authenticate via browser when exporting.
+            </p>
           </>
         )}
         <div>
