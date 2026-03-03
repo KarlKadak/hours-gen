@@ -2,6 +2,10 @@ import { FC } from "react";
 import { DisplayMode, TimeEntry } from "../types";
 import { formatDuration } from "../utils/duration";
 
+const stripAnnotations = (text: string): string => {
+  return text.replace(/\([^)]*\)\s*/g, "").replace(/\[[^\]]*\]\s*/g, "").trim();
+};
+
 interface ProjectTableProps {
   project: string;
   rows: TimeEntry[];
@@ -40,7 +44,7 @@ export const ProjectTable: FC<ProjectTableProps> = ({
               <td className="text-center">
                 <input type="checkbox" />
               </td>
-              <td>{row["Description"]}</td>
+              <td>{stripAnnotations(row["Description"] as string)}</td>
               <td className="text-center">{row["Start Date"]}</td>
               <td className="text-center">
                 {formatDuration(row["Duration (decimal)"], displayMode)}

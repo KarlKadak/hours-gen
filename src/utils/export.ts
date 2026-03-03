@@ -1,7 +1,7 @@
 import { ProjectExportData, ProjectData } from "../types";
 
-const stripBracketContent = (text: string): string => {
-  return text.replace(/\([^)]*\)\s*/g, "").trim();
+const stripAnnotations = (text: string): string => {
+  return text.replace(/\([^)]*\)\s*/g, "").replace(/\[[^\]]*\]\s*/g, "").trim();
 };
 
 const truncate = (text: string, maxLength: number): string => {
@@ -29,7 +29,7 @@ export const exportToCSV = (
 
       entries.forEach((entry) => {
         const date = entry["Start Date"] || "";
-        const task = truncate(stripBracketContent(entry["Description"] || ""), 40);
+        const task = truncate(stripAnnotations(entry["Description"] || ""), 40);
         const hours = entry["Duration (decimal)"] || 0;
 
         csvRows.push(

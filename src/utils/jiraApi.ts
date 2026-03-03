@@ -21,8 +21,19 @@ function toISODate(dateStr: string): string {
   return `${year}-${month}-${day}`;
 }
 
+function stripAnnotations(text: string): string {
+  return text.replace(/\([^)]*\)\s*/g, "").replace(/\[[^\]]*\]\s*/g, "").trim();
+}
+
+function extractBracketComment(text: string): string {
+  const matches = text.match(/\[([^\]]*)\]/g);
+  if (!matches) return "";
+  return matches.map((m) => m.slice(1, -1)).join("; ");
+}
+
 export function extractIssueKey(description: string): string | null {
-  const match = description.match(/^([A-Z]+-\d+)/);
+  const cleaned = stripAnnotations(description);
+  const match = cleaned.match(/^([A-Z]+-\d+)/);
   return match ? match[1] : null;
 }
 
@@ -254,12 +265,14 @@ export async function exportWorklog({
   const date = toISODate(entry["Start Date"] as string);
   const hours = entry["Duration (decimal)"] as number;
   const seconds = hoursToSeconds(hours);
+  const comment = extractBracketComment(description);
 
   const result = await createTempoWorklog(
     credential,
     issueId,
     date,
-    seconds
+    seconds,
+    comment
   );
 
   return {
