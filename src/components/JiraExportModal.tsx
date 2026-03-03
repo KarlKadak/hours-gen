@@ -3,11 +3,9 @@ import { JiraCredential, TimeEntry, SubEntry, JiraExportEntry } from "../types";
 import {
   exportWorklog,
   extractIssueKey,
-  hasAzureAdConfig,
-  getCachedAzureToken,
-  initiateDeviceCodeAuth,
-  pollDeviceCodeAuth,
-  DeviceCodeInfo,
+  hasAzureAdProxy,
+  getCachedAzureCookies,
+  setAzureCookies,
 } from "../utils/jiraApi";
 
 interface JiraExportModalProps {
@@ -33,11 +31,10 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   const [currentMessage, setCurrentMessage] = useState<string>("");
   const [stats, setStats] = useState({ created: 0, updated: 0, fail: 0, total: 0 });
   const abortRef = useRef(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Azure AD device code state
-  const [deviceCodeInfo, setDeviceCodeInfo] = useState<DeviceCodeInfo | null>(null);
-  const [azureError, setAzureError] = useState<string>("");
+  // Azure AD cookie prompt state
+  const [showCookiePrompt, setShowCookiePrompt] = useState(false);
+  const [cookieInput, setCookieInput] = useState("");
 
   const validEntries = entries.filter((e) => extractIssueKey(e["Description"] as string));
   const invalidCount = entries.length - validEntries.length;
@@ -150,33 +147,26 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
     const credential = credentials.find((c) => c.id === selectedCredentialId);
     if (!credential) return;
 
-    // If Azure AD is configured and we don't have a cached token, start device code flow
-    if (hasAzureAdConfig(credential) && !getCachedAzureToken(credential)) {
-      setAzureError("");
-      try {
-        const info = await initiateDeviceCodeAuth(credential);
-        setDeviceCodeInfo(info);
-
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        await pollDeviceCodeAuth(credential, info.deviceCode, info.interval, controller.signal);
-        setDeviceCodeInfo(null);
-        abortControllerRef.current = null;
-      } catch (e) {
-        setDeviceCodeInfo(null);
-        abortControllerRef.current = null;
-        setAzureError(e instanceof Error ? e.message : "Azure AD auth failed");
-        return;
-      }
+    // If Azure AD proxy is configured and no cached cookies, prompt for cookies
+    if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
+      setShowCookiePrompt(true);
+      return;
     }
 
     await runExport(credential);
   };
 
+  const handleCookieSubmit = async () => {
+    const credential = credentials.find((c) => c.id === selectedCredentialId);
+    if (!credential || !cookieInput.trim()) return;
+
+    setAzureCookies(credential.id, cookieInput.trim());
+    setShowCookiePrompt(false);
+    await runExport(credential);
+  };
+
   const handleAbort = () => {
     abortRef.current = true;
-    abortControllerRef.current?.abort();
   };
 
   const selectedCredential = credentials.find(
@@ -197,7 +187,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   return (
     <div
       className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={!isExporting && !deviceCodeInfo ? onClose : undefined}
+      onClick={!isExporting && !showCookiePrompt ? onClose : undefined}
     >
       <div
         className="bg-black text-white p-6 rounded-lg shadow-lg max-w-2xl w-full border border-white max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col"
@@ -207,48 +197,43 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
           Export to Jira/Tempo - {projectName}
         </h3>
 
-        {/* Azure AD device code auth */}
-        {deviceCodeInfo && (
+        {/* Azure AD cookie prompt */}
+        {showCookiePrompt && (
           <div className="mb-4">
             <p className="text-sm mb-3">
-              Sign in to Azure AD to access Jira:
+              Paste your Azure AD session cookies to authenticate:
             </p>
-            <div className="bg-gray-900 border border-gray-700 rounded p-4 mb-3">
-              <p className="text-sm text-gray-400 mb-2">
-                Open this URL and enter the code:
-              </p>
-              <a
-                href={deviceCodeInfo.verificationUri}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:underline text-sm block mb-2"
+            <ol className="text-xs text-gray-400 mb-3 list-decimal list-inside space-y-1">
+              <li>Open <span className="text-blue-400">{selectedCredential?.jiraDomain}</span> in your browser and log in</li>
+              <li>Open DevTools (F12) &gt; Application &gt; Cookies</li>
+              <li>Select the domain and copy all cookie values</li>
+            </ol>
+            <textarea
+              value={cookieInput}
+              onChange={(e) => setCookieInput(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-900 text-white border border-gray-600 rounded focus:border-white text-sm font-mono h-24 resize-none"
+              placeholder="cookie1=value1; cookie2=value2; ..."
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => setShowCookiePrompt(false)}
+                className="px-4 py-2 text-white border border-gray-600 rounded hover:bg-gray-600 cursor-pointer text-sm"
               >
-                {deviceCodeInfo.verificationUri}
-              </a>
-              <p className="text-2xl font-mono font-bold tracking-widest">
-                {deviceCodeInfo.userCode}
-              </p>
+                Cancel
+              </button>
+              <button
+                onClick={handleCookieSubmit}
+                disabled={!cookieInput.trim()}
+                className="px-4 py-2 text-white border border-white rounded hover:bg-gray-800 cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Continue
+              </button>
             </div>
-            <p className="text-xs text-gray-400 animate-pulse">
-              Waiting for authentication...
-            </p>
-            <button
-              onClick={handleAbort}
-              className="mt-3 px-4 py-2 text-red-400 border border-red-400 rounded hover:bg-red-900 cursor-pointer text-sm"
-            >
-              Cancel
-            </button>
           </div>
         )}
 
-        {/* Azure AD error */}
-        {azureError && !deviceCodeInfo && !isExporting && exportEntries.length === 0 && (
-          <div className="mb-4 p-3 bg-red-900/20 border border-red-800 rounded">
-            <p className="text-sm text-red-400">{azureError}</p>
-          </div>
-        )}
-
-        {!isExporting && exportEntries.length === 0 && !deviceCodeInfo && (
+        {!isExporting && exportEntries.length === 0 && !showCookiePrompt && (
           <>
             <div className="mb-4">
               <p className="text-sm text-gray-400 mb-2">

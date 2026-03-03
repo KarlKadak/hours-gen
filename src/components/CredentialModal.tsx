@@ -18,9 +18,7 @@ interface CredentialFormData {
   jiraApiToken: string;
   tempoApiToken: string;
   atlassianAccountId: string;
-  azureTenantId: string;
-  azureAppId: string;
-  azureClientId: string;
+  azureAdProxy: boolean;
 }
 
 const emptyForm: CredentialFormData = {
@@ -31,9 +29,7 @@ const emptyForm: CredentialFormData = {
   jiraApiToken: "",
   tempoApiToken: "",
   atlassianAccountId: "",
-  azureTenantId: "",
-  azureAppId: "",
-  azureClientId: "",
+  azureAdProxy: false,
 };
 
 export const CredentialModal: FC<CredentialModalProps> = ({
@@ -65,9 +61,7 @@ export const CredentialModal: FC<CredentialModalProps> = ({
       jiraApiToken: credential.jiraApiToken,
       tempoApiToken: credential.tempoApiToken,
       atlassianAccountId: credential.atlassianAccountId,
-      azureTenantId: credential.azureTenantId || "",
-      azureAppId: credential.azureAppId || "",
-      azureClientId: credential.azureClientId || "",
+      azureAdProxy: credential.azureAdProxy || false,
     });
     setView("edit");
   };
@@ -203,46 +197,14 @@ export const CredentialModal: FC<CredentialModalProps> = ({
           </div>
         )}
         {formData.type === "apptime" && (
-          <>
-            <div className="border-t border-gray-700 pt-3 mt-1">
-              <p className="text-xs text-gray-400 mb-2">
-                Azure AD (optional, for Jira behind Azure AD App Proxy)
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Azure Tenant ID:</label>
-              <input
-                type="text"
-                value={formData.azureTenantId}
-                onChange={(e) => setFormData({ ...formData, azureTenantId: e.target.value })}
-                className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white text-sm"
-                placeholder="e.g., 86359415-f0d5-4ea5-..."
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Azure App Proxy ID:</label>
-              <input
-                type="text"
-                value={formData.azureAppId}
-                onChange={(e) => setFormData({ ...formData, azureAppId: e.target.value })}
-                className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white text-sm"
-                placeholder="e.g., b682f95e-314f-4361-..."
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Azure Client ID:</label>
-              <input
-                type="text"
-                value={formData.azureClientId}
-                onChange={(e) => setFormData({ ...formData, azureClientId: e.target.value })}
-                className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white text-sm"
-                placeholder="Leave empty for default (Microsoft Office)"
-              />
-            </div>
-            <p className="text-xs text-gray-500">
-              You will authenticate via browser when exporting.
-            </p>
-          </>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.azureAdProxy}
+              onChange={(e) => setFormData({ ...formData, azureAdProxy: e.target.checked })}
+            />
+            Jira behind Azure AD App Proxy
+          </label>
         )}
         <div>
           <label className="block text-sm font-medium mb-1">

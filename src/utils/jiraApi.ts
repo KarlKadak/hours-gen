@@ -2,129 +2,38 @@ import { JiraCredential, TimeEntry } from "../types";
 
 const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
 
-// Default public client ID for device code flow (Microsoft Office - widely available)
-const DEFAULT_AZURE_CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c";
+// Session-level Azure AD cookie cache (keyed by credential ID)
+let azureCookieCache: Record<string, string> = {};
 
-// Azure AD token cache
-const azureTokenCache: Record<string, { token: string; expiresAt: number }> = {};
-
-export function hasAzureAdConfig(credential: JiraCredential): boolean {
-  return !!(credential.azureTenantId && credential.azureAppId);
+export function hasAzureAdProxy(credential: JiraCredential): boolean {
+  return !!credential.azureAdProxy;
 }
 
-export function getCachedAzureToken(credential: JiraCredential): string | null {
-  const cacheKey = `${credential.azureTenantId}:${credential.azureAppId}`;
-  const cached = azureTokenCache[cacheKey];
-  if (cached && cached.expiresAt > Date.now() + 60000) {
-    return cached.token;
-  }
-  return null;
+export function getCachedAzureCookies(credentialId: string): string | null {
+  return azureCookieCache[credentialId] || null;
 }
 
-export interface DeviceCodeInfo {
-  deviceCode: string;
-  userCode: string;
-  verificationUri: string;
-  expiresIn: number;
-  interval: number;
-}
-
-export async function initiateDeviceCodeAuth(credential: JiraCredential): Promise<DeviceCodeInfo> {
-  const body = new URLSearchParams({
-    client_id: credential.azureClientId || DEFAULT_AZURE_CLIENT_ID,
-    scope: `${credential.azureAppId}/.default`,
-  });
-
-  const response = await proxyFetch(
-    `https://login.microsoftonline.com/${credential.azureTenantId}/oauth2/v2.0/devicecode`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-    }
-  );
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error_description || data.error || "Failed to initiate device code flow");
-  }
-
-  return {
-    deviceCode: data.device_code,
-    userCode: data.user_code,
-    verificationUri: data.verification_uri,
-    expiresIn: data.expires_in,
-    interval: data.interval || 5,
-  };
-}
-
-export async function pollDeviceCodeAuth(
-  credential: JiraCredential,
-  deviceCode: string,
-  interval: number,
-  signal?: AbortSignal,
-): Promise<string> {
-  const body = new URLSearchParams({
-    grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-    client_id: credential.azureClientId || DEFAULT_AZURE_CLIENT_ID,
-    device_code: deviceCode,
-  });
-
-  const pollInterval = interval * 1000;
-
-  while (!signal?.aborted) {
-    await new Promise((r) => setTimeout(r, pollInterval));
-    if (signal?.aborted) break;
-
-    const response = await proxyFetch(
-      `https://login.microsoftonline.com/${credential.azureTenantId}/oauth2/v2.0/token`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString(),
-      }
-    );
-
-    const data = await response.json();
-
-    if (response.ok) {
-      const cacheKey = `${credential.azureTenantId}:${credential.azureAppId}`;
-      const expiresIn = data.expires_in || 3600;
-      azureTokenCache[cacheKey] = {
-        token: data.access_token,
-        expiresAt: Date.now() + expiresIn * 1000,
-      };
-      return data.access_token;
-    }
-
-    if (data.error === "authorization_pending") {
-      continue;
-    } else if (data.error === "slow_down") {
-      await new Promise((r) => setTimeout(r, 5000));
-      continue;
-    } else {
-      throw new Error(data.error_description || data.error || "Device code auth failed");
-    }
-  }
-
-  throw new Error("Authentication cancelled");
+export function setAzureCookies(credentialId: string, cookies: string): void {
+  azureCookieCache[credentialId] = cookies;
 }
 
 function getAppTimeAuthHeaders(credential: JiraCredential): Record<string, string> {
-  if (hasAzureAdConfig(credential)) {
-    const token = getCachedAzureToken(credential);
-    if (token) {
-      return {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      };
-    }
-  }
-  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
-  return {
-    Authorization: `Basic ${auth}`,
+  const headers: Record<string, string> = {
     Accept: "application/json",
   };
+
+  if (credential.azureAdProxy) {
+    const cookies = azureCookieCache[credential.id];
+    if (cookies) {
+      headers["x-forward-cookies"] = cookies;
+    }
+  }
+
+  // Always include Basic auth - Azure AD App Proxy passes it to the backend
+  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
+  headers["Authorization"] = `Basic ${auth}`;
+
+  return headers;
 }
 
 async function proxyFetch(
