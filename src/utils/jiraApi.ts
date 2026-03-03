@@ -166,10 +166,10 @@ export async function createTempoWorklog(
   seconds: number,
   description: string = ""
 ): Promise<CreateWorklogResult> {
-  // Check for existing worklog for this issue on this date
+  // Check for existing worklog for this issue+description on this date
   const existingWorklogs = await getExistingWorklogs(credential, date);
   const existingWorklog = existingWorklogs.find(
-    (w) => w.issue.id === issueId
+    (w) => w.issue.id === issueId && (w.description || "") === description
   );
 
   if (existingWorklog) {
@@ -251,6 +251,15 @@ async function getExistingJiraWorklogs(
   });
 }
 
+function extractAdfText(adf: unknown): string {
+  if (!adf || typeof adf !== "object") return "";
+  const doc = adf as { content?: { content?: { text?: string }[] }[] };
+  return (doc.content || [])
+    .flatMap((block) => (block.content || []).map((node) => node.text || ""))
+    .join("")
+    .trim();
+}
+
 function makeAdfComment(text: string): object {
   if (!text) {
     return {
@@ -280,14 +289,17 @@ async function createJiraWorklog(
 ): Promise<CreateWorklogResult> {
   const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
 
-  // Check for existing worklog for this issue on this date
+  // Check for existing worklog for this issue+comment on this date
   const existing = await getExistingJiraWorklogs(credential, issueKey, date);
+  const matchingWorklog = existing.find(
+    (w) => extractAdfText(w.comment) === comment
+  );
 
-  if (existing.length > 0) {
+  if (matchingWorklog) {
     return updateJiraWorklog(
       credential,
       issueKey,
-      existing[0].id,
+      matchingWorklog.id,
       date,
       seconds,
       comment
