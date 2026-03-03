@@ -9,11 +9,11 @@ const AZURE_CLI_CLIENT_ID = "04b07795-a710-4e97-80c2-0a48a62aebe7";
 const azureTokenCache: Record<string, { token: string; expiresAt: number }> = {};
 
 function hasAzureAdConfig(credential: JiraCredential): boolean {
-  return !!(credential.azureTenantId && credential.azureAppId && credential.azurePassword);
+  return !!(credential.azureTenantId && credential.azureAppId && credential.azureUsername && credential.azurePassword);
 }
 
 async function getAzureAdToken(credential: JiraCredential): Promise<string> {
-  const cacheKey = `${credential.azureTenantId}:${credential.jiraEmail}`;
+  const cacheKey = `${credential.azureTenantId}:${credential.azureUsername}`;
   const cached = azureTokenCache[cacheKey];
   if (cached && cached.expiresAt > Date.now() + 60000) {
     return cached.token;
@@ -23,7 +23,7 @@ async function getAzureAdToken(credential: JiraCredential): Promise<string> {
     grant_type: "password",
     client_id: AZURE_CLI_CLIENT_ID,
     scope: `${credential.azureAppId}/.default openid`,
-    username: credential.jiraEmail,
+    username: credential.azureUsername!,
     password: credential.azurePassword!,
   });
 
