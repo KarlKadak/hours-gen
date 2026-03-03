@@ -2,8 +2,8 @@ import { JiraCredential, TimeEntry } from "../types";
 
 const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
 
-// Azure CLI public client ID - pre-consented in most Azure AD tenants
-const AZURE_CLI_CLIENT_ID = "04b07795-a710-4e97-80c2-0a48a62aebe7";
+// Default public client ID for device code flow (Microsoft Office - widely available)
+const DEFAULT_AZURE_CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c";
 
 // Azure AD token cache
 const azureTokenCache: Record<string, { token: string; expiresAt: number }> = {};
@@ -31,7 +31,7 @@ export interface DeviceCodeInfo {
 
 export async function initiateDeviceCodeAuth(credential: JiraCredential): Promise<DeviceCodeInfo> {
   const body = new URLSearchParams({
-    client_id: AZURE_CLI_CLIENT_ID,
+    client_id: credential.azureClientId || DEFAULT_AZURE_CLIENT_ID,
     scope: `${credential.azureAppId}/.default`,
   });
 
@@ -66,7 +66,7 @@ export async function pollDeviceCodeAuth(
 ): Promise<string> {
   const body = new URLSearchParams({
     grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-    client_id: AZURE_CLI_CLIENT_ID,
+    client_id: credential.azureClientId || DEFAULT_AZURE_CLIENT_ID,
     device_code: deviceCode,
   });
 

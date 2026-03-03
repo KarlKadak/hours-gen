@@ -20,6 +20,7 @@ interface CredentialFormData {
   atlassianAccountId: string;
   azureTenantId: string;
   azureAppId: string;
+  azureClientId: string;
 }
 
 const emptyForm: CredentialFormData = {
@@ -32,6 +33,7 @@ const emptyForm: CredentialFormData = {
   atlassianAccountId: "",
   azureTenantId: "",
   azureAppId: "",
+  azureClientId: "",
 };
 
 export const CredentialModal: FC<CredentialModalProps> = ({
@@ -65,6 +67,7 @@ export const CredentialModal: FC<CredentialModalProps> = ({
       atlassianAccountId: credential.atlassianAccountId,
       azureTenantId: credential.azureTenantId || "",
       azureAppId: credential.azureAppId || "",
+      azureClientId: credential.azureClientId || "",
     });
     setView("edit");
   };
@@ -224,6 +227,16 @@ export const CredentialModal: FC<CredentialModalProps> = ({
                 onChange={(e) => setFormData({ ...formData, azureAppId: e.target.value })}
                 className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white text-sm"
                 placeholder="e.g., b682f95e-314f-4361-..."
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Azure Client ID:</label>
+              <input
+                type="text"
+                value={formData.azureClientId}
+                onChange={(e) => setFormData({ ...formData, azureClientId: e.target.value })}
+                className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white text-sm"
+                placeholder="Leave empty for default (Microsoft Office)"
               />
             </div>
             <p className="text-xs text-gray-500">
