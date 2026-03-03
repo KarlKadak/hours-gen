@@ -59,6 +59,9 @@ export interface JiraCredential {
   jiraApiToken: string;
   tempoApiToken: string;
   atlassianAccountId: string;
+  azureTenantId?: string;
+  azureAppId?: string;
+  azurePassword?: string;
 }
 
 export interface EncryptedCredentialStore {

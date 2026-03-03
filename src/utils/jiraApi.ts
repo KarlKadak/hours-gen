@@ -2,6 +2,71 @@ import { JiraCredential, TimeEntry } from "../types";
 
 const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
 
+// Azure CLI public client ID - pre-consented in most Azure AD tenants
+const AZURE_CLI_CLIENT_ID = "04b07795-a710-4e97-80c2-0a48a62aebe7";
+
+// Azure AD token cache
+const azureTokenCache: Record<string, { token: string; expiresAt: number }> = {};
+
+function hasAzureAdConfig(credential: JiraCredential): boolean {
+  return !!(credential.azureTenantId && credential.azureAppId && credential.azurePassword);
+}
+
+async function getAzureAdToken(credential: JiraCredential): Promise<string> {
+  const cacheKey = `${credential.azureTenantId}:${credential.jiraEmail}`;
+  const cached = azureTokenCache[cacheKey];
+  if (cached && cached.expiresAt > Date.now() + 60000) {
+    return cached.token;
+  }
+
+  const body = new URLSearchParams({
+    grant_type: "password",
+    client_id: AZURE_CLI_CLIENT_ID,
+    scope: `${credential.azureAppId}/.default openid`,
+    username: credential.jiraEmail,
+    password: credential.azurePassword!,
+  });
+
+  const response = await proxyFetch(
+    `https://login.microsoftonline.com/${credential.azureTenantId}/oauth2/v2.0/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    }
+  );
+
+  const data = await response.json();
+  if (!response.ok) {
+    const errorDesc = data.error_description || data.error || "Unknown Azure AD error";
+    throw new Error(`Azure AD auth failed: ${errorDesc}`);
+  }
+
+  const token = data.access_token;
+  const expiresIn = data.expires_in || 3600;
+  azureTokenCache[cacheKey] = {
+    token,
+    expiresAt: Date.now() + expiresIn * 1000,
+  };
+
+  return token;
+}
+
+async function getAppTimeAuthHeaders(credential: JiraCredential): Promise<Record<string, string>> {
+  if (hasAzureAdConfig(credential)) {
+    const token = await getAzureAdToken(credential);
+    return {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    };
+  }
+  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
+  return {
+    Authorization: `Basic ${auth}`,
+    Accept: "application/json",
+  };
+}
+
 async function proxyFetch(
   url: string,
   options: RequestInit = {}
@@ -59,6 +124,8 @@ export async function getJiraIssueId(
   );
 
   if (response.ok) {
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) return null;
     const data = await response.json();
     return parseInt(data.id, 10);
   }
@@ -108,6 +175,8 @@ async function getExistingWorklogs(
   );
 
   if (response.ok) {
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) return [];
     const data = await response.json();
     return data.results || [];
   }
@@ -225,20 +294,20 @@ async function getExistingJiraWorklogs(
   issueKey: string,
   date: string
 ): Promise<JiraWorklog[]> {
-  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
+  const authHeaders = await getAppTimeAuthHeaders(credential);
 
   const response = await proxyFetch(
     `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog`,
     {
       method: "GET",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        Accept: "application/json",
-      },
+      headers: authHeaders,
     }
   );
 
   if (!response.ok) return [];
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) return [];
 
   const data = await response.json();
   const worklogs: JiraWorklog[] = data.worklogs || [];
@@ -287,8 +356,6 @@ async function createJiraWorklog(
   seconds: number,
   comment: string = ""
 ): Promise<CreateWorklogResult> {
-  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
-
   // Check for existing worklog for this issue+comment on this date
   const existing = await getExistingJiraWorklogs(credential, issueKey, date);
   const matchingWorklog = existing.find(
@@ -306,6 +373,7 @@ async function createJiraWorklog(
     );
   }
 
+  const authHeaders = await getAppTimeAuthHeaders(credential);
   const payload = {
     timeSpentSeconds: seconds,
     started: `${date}T09:00:00.000+0000`,
@@ -317,7 +385,7 @@ async function createJiraWorklog(
     {
       method: "POST",
       headers: {
-        Authorization: `Basic ${auth}`,
+        ...authHeaders,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
@@ -348,7 +416,7 @@ async function updateJiraWorklog(
   seconds: number,
   comment: string = ""
 ): Promise<CreateWorklogResult> {
-  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
+  const authHeaders = await getAppTimeAuthHeaders(credential);
 
   const payload = {
     timeSpentSeconds: seconds,
@@ -361,7 +429,7 @@ async function updateJiraWorklog(
     {
       method: "PUT",
       headers: {
-        Authorization: `Basic ${auth}`,
+        ...authHeaders,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
@@ -421,6 +489,19 @@ export async function exportWorklog({
   const comment = extractBracketComment(description);
 
   if (credential.type === "apptime") {
+    if (hasAzureAdConfig(credential)) {
+      onProgress?.(`Authenticating with Azure AD...`);
+      try {
+        await getAzureAdToken(credential);
+      } catch (e) {
+        return {
+          success: false,
+          error: e instanceof Error ? e.message : "Azure AD auth failed",
+          issueKey,
+        };
+      }
+    }
+
     onProgress?.(`Creating worklog for ${issueKey}...`);
 
     const result = await createJiraWorklog(
