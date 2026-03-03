@@ -82,6 +82,16 @@ interface TempoWorklog {
   description?: string;
 }
 
+interface JiraWorklog {
+  id: string;
+  author: {
+    accountId: string;
+  };
+  timeSpentSeconds: number;
+  started: string;
+  comment?: unknown;
+}
+
 async function getExistingWorklogs(
   credential: JiraCredential,
   date: string
@@ -208,6 +218,160 @@ export async function createTempoWorklog(
   return { success: false, error: errorMsg };
 }
 
+// --- AppTime (native Jira worklog) functions ---
+
+async function getExistingJiraWorklogs(
+  credential: JiraCredential,
+  issueKey: string,
+  date: string
+): Promise<JiraWorklog[]> {
+  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
+
+  const response = await proxyFetch(
+    `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  const worklogs: JiraWorklog[] = data.worklogs || [];
+
+  // Filter by author and date
+  return worklogs.filter((w) => {
+    const matchesAuthor = w.author.accountId === credential.atlassianAccountId;
+    const worklogDate = w.started.slice(0, 10); // "YYYY-MM-DD"
+    return matchesAuthor && worklogDate === date;
+  });
+}
+
+function makeAdfComment(text: string): object {
+  if (!text) {
+    return {
+      version: 1,
+      type: "doc",
+      content: [],
+    };
+  }
+  return {
+    version: 1,
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text }],
+      },
+    ],
+  };
+}
+
+async function createJiraWorklog(
+  credential: JiraCredential,
+  issueKey: string,
+  date: string,
+  seconds: number,
+  comment: string = ""
+): Promise<CreateWorklogResult> {
+  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
+
+  // Check for existing worklog for this issue on this date
+  const existing = await getExistingJiraWorklogs(credential, issueKey, date);
+
+  if (existing.length > 0) {
+    return updateJiraWorklog(
+      credential,
+      issueKey,
+      existing[0].id,
+      date,
+      seconds,
+      comment
+    );
+  }
+
+  const payload = {
+    timeSpentSeconds: seconds,
+    started: `${date}T09:00:00.000+0000`,
+    comment: makeAdfComment(comment),
+  };
+
+  const response = await proxyFetch(
+    `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (response.ok) {
+    return { success: true, wasUpdated: false };
+  }
+
+  let errorMsg = `HTTP ${response.status}`;
+  try {
+    const data = await response.json();
+    errorMsg =
+      data.errorMessages?.[0] || JSON.stringify(data).slice(0, 100);
+  } catch {
+    // Keep default error message
+  }
+
+  return { success: false, error: errorMsg };
+}
+
+async function updateJiraWorklog(
+  credential: JiraCredential,
+  issueKey: string,
+  worklogId: string,
+  date: string,
+  seconds: number,
+  comment: string = ""
+): Promise<CreateWorklogResult> {
+  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
+
+  const payload = {
+    timeSpentSeconds: seconds,
+    started: `${date}T09:00:00.000+0000`,
+    comment: makeAdfComment(comment),
+  };
+
+  const response = await proxyFetch(
+    `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog/${worklogId}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (response.ok) {
+    return { success: true, wasUpdated: true };
+  }
+
+  let errorMsg = `HTTP ${response.status}`;
+  try {
+    const data = await response.json();
+    errorMsg =
+      data.errorMessages?.[0] || JSON.stringify(data).slice(0, 100);
+  } catch {
+    // Keep default error message
+  }
+
+  return { success: false, error: errorMsg };
+}
+
 export interface ExportWorklogParams {
   credential: JiraCredential;
   entry: TimeEntry;
@@ -239,6 +403,26 @@ export async function exportWorklog({
     };
   }
 
+  const date = toISODate(entry["Start Date"] as string);
+  const hours = entry["Duration (decimal)"] as number;
+  const seconds = hoursToSeconds(hours);
+  const comment = extractBracketComment(description);
+
+  if (credential.type === "apptime") {
+    onProgress?.(`Creating worklog for ${issueKey}...`);
+
+    const result = await createJiraWorklog(
+      credential,
+      issueKey,
+      date,
+      seconds,
+      comment
+    );
+
+    return { ...result, issueKey };
+  }
+
+  // Default: Tempo flow
   const cacheKey = credential.jiraDomain;
   if (!issueIdCache[cacheKey]) {
     issueIdCache[cacheKey] = {};
@@ -261,11 +445,6 @@ export async function exportWorklog({
   }
 
   onProgress?.(`Creating worklog for ${issueKey}...`);
-
-  const date = toISODate(entry["Start Date"] as string);
-  const hours = entry["Duration (decimal)"] as number;
-  const seconds = hoursToSeconds(hours);
-  const comment = extractBracketComment(description);
 
   const result = await createTempoWorklog(
     credential,

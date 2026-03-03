@@ -139,7 +139,8 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
           <>
             <div className="mb-4">
               <p className="text-sm text-gray-400 mb-2">
-                Export {validEntries.length} entries ({totalHours.toFixed(2)} hours) to Tempo.
+                Export {validEntries.length} entries ({totalHours.toFixed(2)} hours) to{" "}
+                {selectedCredential?.type === "apptime" ? "AppTime" : "Tempo"}.
                 {invalidCount > 0 && (
                   <span className="text-yellow-400">
                     {" "}({invalidCount} entries without issue keys will be skipped)
@@ -172,7 +173,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
                 >
                   {credentials.map((cred) => (
                     <option key={cred.id} value={cred.id}>
-                      {cred.name} ({cred.jiraDomain})
+                      {cred.name} ({cred.jiraDomain}) [{cred.type === "apptime" ? "AppTime" : "Tempo"}]
                     </option>
                   ))}
                 </select>

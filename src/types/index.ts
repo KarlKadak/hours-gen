@@ -48,6 +48,7 @@ export type ProjectData = Record<string, TimeEntry[]>;
 export interface JiraCredential {
   id: string;
   name: string;
+  type: "tempo" | "apptime";
   jiraDomain: string;
   jiraEmail: string;
   jiraApiToken: string;

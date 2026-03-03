@@ -12,6 +12,7 @@ interface CredentialModalProps {
 
 interface CredentialFormData {
   name: string;
+  type: "tempo" | "apptime";
   jiraDomain: string;
   jiraEmail: string;
   jiraApiToken: string;
@@ -21,6 +22,7 @@ interface CredentialFormData {
 
 const emptyForm: CredentialFormData = {
   name: "",
+  type: "tempo",
   jiraDomain: "",
   jiraEmail: "",
   jiraApiToken: "",
@@ -51,6 +53,7 @@ export const CredentialModal: FC<CredentialModalProps> = ({
     setEditingId(credential.id);
     setFormData({
       name: credential.name,
+      type: credential.type,
       jiraDomain: credential.jiraDomain,
       jiraEmail: credential.jiraEmail,
       jiraApiToken: credential.jiraApiToken,
@@ -108,6 +111,31 @@ export const CredentialModal: FC<CredentialModalProps> = ({
           />
         </div>
         <div>
+          <label className="block text-sm font-medium mb-1">Type:</label>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="credentialType"
+                value="tempo"
+                checked={formData.type === "tempo"}
+                onChange={() => setFormData({ ...formData, type: "tempo" })}
+              />
+              Tempo
+            </label>
+            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="credentialType"
+                value="apptime"
+                checked={formData.type === "apptime"}
+                onChange={() => setFormData({ ...formData, type: "apptime", tempoApiToken: "" })}
+              />
+              AppTime
+            </label>
+          </div>
+        </div>
+        <div>
           <label className="block text-sm font-medium mb-1">Jira Domain:</label>
           <input
             type="text"
@@ -148,21 +176,23 @@ export const CredentialModal: FC<CredentialModalProps> = ({
             required
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Tempo API Token:
-          </label>
-          <input
-            type="password"
-            value={formData.tempoApiToken}
-            onChange={(e) =>
-              setFormData({ ...formData, tempoApiToken: e.target.value })
-            }
-            className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white text-sm"
-            placeholder="Create in Tempo Settings"
-            required
-          />
-        </div>
+        {formData.type === "tempo" && (
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Tempo API Token:
+            </label>
+            <input
+              type="password"
+              value={formData.tempoApiToken}
+              onChange={(e) =>
+                setFormData({ ...formData, tempoApiToken: e.target.value })
+              }
+              className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white text-sm"
+              placeholder="Create in Tempo Settings"
+              required
+            />
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium mb-1">
             Atlassian Account ID:
@@ -213,7 +243,12 @@ export const CredentialModal: FC<CredentialModalProps> = ({
               className="flex items-center justify-between p-3 bg-gray-800 rounded border border-gray-700"
             >
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{cred.name}</p>
+                <p className="font-medium truncate">
+                  {cred.name}
+                  <span className="ml-2 text-xs text-gray-500 font-normal">
+                    {cred.type === "apptime" ? "AppTime" : "Tempo"}
+                  </span>
+                </p>
                 <p className="text-sm text-gray-400 truncate">
                   {cred.jiraDomain}
                 </p>

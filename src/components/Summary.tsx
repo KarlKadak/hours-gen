@@ -123,8 +123,9 @@ export const Summary: FC<SummaryProps> = ({
         </button>
         <button
           onClick={onJiraExportClick}
-          disabled={Object.keys(projects).length === 0}
+          disabled={Object.keys(projects).length === 0 || selectedProject === "all"}
           className="px-3 py-1 text-white border border-blue-400 rounded text-sm cursor-pointer disabled:bg-gray-600 disabled:cursor-not-allowed disabled:border-gray-400"
+          title={selectedProject === "all" ? "Select a single project to export to Jira" : undefined}
         >
           Export to Jira
         </button>

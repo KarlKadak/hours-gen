@@ -90,7 +90,9 @@ export function useCredentialStore(): [
       }
 
       const encryptedStore: EncryptedCredentialStore = JSON.parse(stored);
-      const credentials = await decryptCredentials(encryptedStore, password);
+      const credentials = (await decryptCredentials(encryptedStore, password)).map(
+        (c) => ({ ...c, type: c.type || "tempo" }) as JiraCredential
+      );
 
       setMasterPassword(password);
       setState((prev) => ({
