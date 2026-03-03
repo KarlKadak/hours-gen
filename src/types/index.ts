@@ -35,8 +35,13 @@ export interface StoredProjectMapping {
   lastExported: string; // ISO 8601 datetime
 }
 
+export interface SubEntry {
+  description: string;
+  duration: number;
+}
+
 export interface TimeEntry {
-  [key: string]: string | number;
+  [key: string]: string | number | SubEntry[];
   "Project": string;
   "Description": string;
   "Start Date": string;

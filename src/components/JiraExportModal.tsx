@@ -1,5 +1,5 @@
 import { FC, useState, useCallback, useRef } from "react";
-import { JiraCredential, TimeEntry, JiraExportEntry } from "../types";
+import { JiraCredential, TimeEntry, SubEntry, JiraExportEntry } from "../types";
 import { exportWorklog, extractIssueKey } from "../utils/jiraApi";
 
 interface JiraExportModalProps {
@@ -30,13 +30,32 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   const invalidCount = entries.length - validEntries.length;
 
   const prepareEntries = useCallback((): JiraExportEntry[] => {
-    return validEntries.map((entry) => ({
-      date: entry["Start Date"] as string,
-      issueKey: extractIssueKey(entry["Description"] as string) || "N/A",
-      hours: entry["Duration (decimal)"] as number,
-      description: entry["Description"] as string,
-      status: "pending" as const,
-    }));
+    const result: JiraExportEntry[] = [];
+    for (const entry of validEntries) {
+      const subs = entry["_subEntries"] as SubEntry[] | undefined;
+      if (subs && subs.length > 0) {
+        for (const sub of subs) {
+          const issueKey = extractIssueKey(sub.description);
+          if (!issueKey) continue;
+          result.push({
+            date: entry["Start Date"] as string,
+            issueKey,
+            hours: sub.duration,
+            description: sub.description,
+            status: "pending" as const,
+          });
+        }
+      } else {
+        result.push({
+          date: entry["Start Date"] as string,
+          issueKey: extractIssueKey(entry["Description"] as string) || "N/A",
+          hours: entry["Duration (decimal)"] as number,
+          description: entry["Description"] as string,
+          status: "pending" as const,
+        });
+      }
+    }
+    return result;
   }, [validEntries]);
 
   const handleExport = async () => {
@@ -63,7 +82,13 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
         )
       );
 
-      const timeEntry = validEntries[i];
+      const exportEntry = entriesToExport[i];
+      const timeEntry: TimeEntry = {
+        "Project": projectName,
+        "Description": exportEntry.description,
+        "Start Date": exportEntry.date,
+        "Duration (decimal)": exportEntry.hours,
+      };
 
       const result = await exportWorklog({
         credential,

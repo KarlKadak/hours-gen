@@ -1,4 +1,4 @@
-import { RoundMode, RoundInt, TimeEntry, ProjectData } from "../types";
+import { RoundMode, RoundInt, TimeEntry, SubEntry, ProjectData } from "../types";
 import { roundDuration } from "./duration";
 
 // Parse DD/MM/YYYY date string to Date object
@@ -10,6 +10,11 @@ function parseDDMMYYYY(dateStr: string): Date {
 // Strip "* " prefix used to indicate non-coefficient entries
 function normalizeDescription(desc: string): string {
   return desc?.startsWith("* ") ? desc.slice(2) : desc;
+}
+
+// Strip bracket [comments] and parenthetical (comments) from description
+function stripAnnotations(text: string): string {
+  return text.replace(/\([^)]*\)\s*/g, "").replace(/\[[^\]]*\]\s*/g, "").trim();
 }
 
 export const groupAndMerge = (
@@ -31,9 +36,10 @@ export const groupAndMerge = (
     for (const entry of entries) {
       const desc = entry["Description"];
       const normalizedDesc = normalizeDescription(desc);
+      const strippedDesc = stripAnnotations(normalizedDesc);
       const date = entry["Start Date"];
-      // Use normalized description for merge key so "* ABC-123" and "ABC-123" merge together
-      const mergeKey = `${normalizedDesc}__${date}`;
+      // Use stripped description for merge key so entries differing only in comments merge together
+      const mergeKey = `${strippedDesc}__${date}`;
       let dur = parseFloat(entry["Duration (decimal)"] || "0");
       const shouldSkipCoeff = skipCoeffOnStar && desc?.startsWith("* ");
       if (!shouldSkipCoeff) {
@@ -41,12 +47,22 @@ export const groupAndMerge = (
       }
       let mins = dur * 60;
       mins = roundDuration(mins, roundMode, roundInt);
+      const roundedHours = mins / 60;
       if (!merged[mergeKey]) {
-        // Store with normalized description (star prefix stripped)
-        merged[mergeKey] = { ...entry, "Description": normalizedDesc, "Duration (decimal)": mins / 60 } as TimeEntry;
+        // Store with stripped description (no comments) for display/CSV
+        merged[mergeKey] = { ...entry, "Description": strippedDesc, "Duration (decimal)": roundedHours } as TimeEntry;
+        merged[mergeKey]["_subEntries"] = [{ description: normalizedDesc, duration: roundedHours }] as SubEntry[];
       } else {
         merged[mergeKey]["Duration (decimal)"] =
-          (merged[mergeKey]["Duration (decimal)"] as number) + mins / 60;
+          (merged[mergeKey]["Duration (decimal)"] as number) + roundedHours;
+        // Accumulate sub-entries, merging duplicates
+        const subs = merged[mergeKey]["_subEntries"] as SubEntry[];
+        const existing = subs.find((s) => s.description === normalizedDesc);
+        if (existing) {
+          existing.duration += roundedHours;
+        } else {
+          subs.push({ description: normalizedDesc, duration: roundedHours });
+        }
       }
     }
     result[project] = Object.values(merged).sort((a: TimeEntry, b: TimeEntry) => {
