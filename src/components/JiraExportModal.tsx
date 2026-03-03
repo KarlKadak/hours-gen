@@ -29,6 +29,14 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   const validEntries = entries.filter((e) => extractIssueKey(e["Description"] as string));
   const invalidCount = entries.length - validEntries.length;
 
+  const exportEntryCount = validEntries.reduce((count, entry) => {
+    const subs = entry["_subEntries"] as SubEntry[] | undefined;
+    if (subs && subs.length > 0) {
+      return count + subs.filter((s) => extractIssueKey(s.description)).length;
+    }
+    return count + 1;
+  }, 0);
+
   const prepareEntries = useCallback((): JiraExportEntry[] => {
     const result: JiraExportEntry[] = [];
     for (const entry of validEntries) {
@@ -164,7 +172,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
           <>
             <div className="mb-4">
               <p className="text-sm text-gray-400 mb-2">
-                Export {validEntries.length} entries ({totalHours.toFixed(2)} hours) to{" "}
+                Export {exportEntryCount} entries ({totalHours.toFixed(2)} hours) to{" "}
                 {selectedCredential?.type === "apptime" ? "AppTime" : "Tempo"}.
                 {invalidCount > 0 && (
                   <span className="text-yellow-400">
@@ -287,6 +295,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
                     <th className="p-2 font-medium">Status</th>
                     <th className="p-2 font-medium">Date</th>
                     <th className="p-2 font-medium">Issue</th>
+                    <th className="p-2 font-medium">Description</th>
                     <th className="p-2 font-medium">Hours</th>
                   </tr>
                 </thead>
@@ -322,6 +331,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
                       </td>
                       <td className="p-2 text-gray-400">{entry.date}</td>
                       <td className="p-2">{entry.issueKey}</td>
+                      <td className="p-2 text-gray-400 truncate max-w-48">{entry.description}</td>
                       <td className="p-2">{entry.hours.toFixed(2)}</td>
                     </tr>
                   ))}
