@@ -3,7 +3,7 @@ import { JiraCredential, TimeEntry } from "../types";
 const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
 
 // Session-level Azure AD cookie cache (keyed by credential ID)
-let azureCookieCache: Record<string, string> = {};
+const azureCookieCache: Record<string, string> = {};
 
 export function hasAzureAdProxy(credential: JiraCredential): boolean {
   return !!credential.azureAdProxy;
