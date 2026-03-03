@@ -156,11 +156,24 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
     await runExport(credential);
   };
 
+  const parseCookieInput = (input: string): string => {
+    const trimmed = input.trim();
+    if (trimmed.startsWith("[")) {
+      try {
+        const cookies = JSON.parse(trimmed) as { name: string; value: string }[];
+        return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+      } catch {
+        // Fall through to raw string
+      }
+    }
+    return trimmed;
+  };
+
   const handleCookieSubmit = async () => {
     const credential = credentials.find((c) => c.id === selectedCredentialId);
     if (!credential || !cookieInput.trim()) return;
 
-    setAzureCookies(credential.id, cookieInput.trim());
+    setAzureCookies(credential.id, parseCookieInput(cookieInput));
     setShowCookiePrompt(false);
     await runExport(credential);
   };
@@ -212,7 +225,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
               value={cookieInput}
               onChange={(e) => setCookieInput(e.target.value)}
               className="w-full px-3 py-2 bg-gray-900 text-white border border-gray-600 rounded focus:border-white text-sm font-mono h-24 resize-none"
-              placeholder="cookie1=value1; cookie2=value2; ..."
+              placeholder='Paste JSON array from extension or "name=value; ..." string'
               autoFocus
             />
             <div className="flex justify-end gap-2 mt-3">
