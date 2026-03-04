@@ -1,6 +1,12 @@
 import { FC, useState, useCallback, useRef } from "react";
 import { JiraCredential, TimeEntry, SubEntry, JiraExportEntry } from "../types";
-import { exportWorklog, extractIssueKey } from "../utils/jiraApi";
+import {
+  exportWorklog,
+  extractIssueKey,
+  hasAzureAdProxy,
+  getCachedAzureCookies,
+  setAzureCookies,
+} from "../utils/jiraApi";
 
 interface JiraExportModalProps {
   credentials: JiraCredential[];
@@ -25,6 +31,10 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   const [currentMessage, setCurrentMessage] = useState<string>("");
   const [stats, setStats] = useState({ created: 0, updated: 0, fail: 0, total: 0 });
   const abortRef = useRef(false);
+
+  // Azure AD cookie prompt state
+  const [showCookiePrompt, setShowCookiePrompt] = useState(false);
+  const [cookieInput, setCookieInput] = useState("");
 
   const validEntries = entries.filter((e) => extractIssueKey(e["Description"] as string));
   const invalidCount = entries.length - validEntries.length;
@@ -136,6 +146,35 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   const handleExport = async () => {
     const credential = credentials.find((c) => c.id === selectedCredentialId);
     if (!credential) return;
+
+    // If Azure AD proxy is configured and no cached cookies, prompt for cookies
+    if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
+      setShowCookiePrompt(true);
+      return;
+    }
+
+    await runExport(credential);
+  };
+
+  const parseCookieInput = (input: string): string => {
+    const trimmed = input.trim();
+    if (trimmed.startsWith("[")) {
+      try {
+        const cookies = JSON.parse(trimmed) as { name: string; value: string }[];
+        return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+      } catch {
+        // Fall through to raw string
+      }
+    }
+    return trimmed;
+  };
+
+  const handleCookieSubmit = async () => {
+    const credential = credentials.find((c) => c.id === selectedCredentialId);
+    if (!credential || !cookieInput.trim()) return;
+
+    setAzureCookies(credential.id, parseCookieInput(cookieInput));
+    setShowCookiePrompt(false);
     await runExport(credential);
   };
 
@@ -161,7 +200,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   return (
     <div
       className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={!isExporting ? onClose : undefined}
+      onClick={!isExporting && !showCookiePrompt ? onClose : undefined}
     >
       <div
         className="bg-black text-white p-6 rounded-lg shadow-lg max-w-2xl w-full border border-white max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col"
@@ -171,7 +210,43 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
           Export to Jira/Tempo - {projectName}
         </h3>
 
-        {!isExporting && exportEntries.length === 0 && (
+        {/* Azure AD cookie prompt */}
+        {showCookiePrompt && (
+          <div className="mb-4">
+            <p className="text-sm mb-3">
+              Paste your Azure AD session cookies to authenticate:
+            </p>
+            <ol className="text-xs text-gray-400 mb-3 list-decimal list-inside space-y-1">
+              <li>Open <span className="text-blue-400">{selectedCredential?.jiraDomain}</span> in your browser and log in</li>
+              <li>Open DevTools (F12) &gt; Application &gt; Cookies</li>
+              <li>Select the domain and copy all cookie values</li>
+            </ol>
+            <textarea
+              value={cookieInput}
+              onChange={(e) => setCookieInput(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-900 text-white border border-gray-600 rounded focus:border-white text-sm font-mono h-24 resize-none"
+              placeholder='Paste JSON array from extension or "name=value; ..." string'
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => setShowCookiePrompt(false)}
+                className="px-4 py-2 text-white border border-gray-600 rounded hover:bg-gray-600 cursor-pointer text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCookieSubmit}
+                disabled={!cookieInput.trim()}
+                className="px-4 py-2 text-white border border-white rounded hover:bg-gray-800 cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!isExporting && exportEntries.length === 0 && !showCookiePrompt && (
           <>
             <div className="mb-4">
               <p className="text-sm text-gray-400 mb-2">

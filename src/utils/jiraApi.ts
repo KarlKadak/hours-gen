@@ -2,8 +2,38 @@ import { JiraCredential, TimeEntry } from "../types";
 
 const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
 
+// Session-level Azure AD cookie cache (keyed by credential ID)
+const azureCookieCache: Record<string, string> = {};
+
 export function hasAzureAdProxy(credential: JiraCredential): boolean {
   return !!credential.azureAdProxy;
+}
+
+export function getCachedAzureCookies(credentialId: string): string | null {
+  return azureCookieCache[credentialId] || null;
+}
+
+export function setAzureCookies(credentialId: string, cookies: string): void {
+  azureCookieCache[credentialId] = cookies;
+}
+
+function getAppTimeAuthHeaders(credential: JiraCredential): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+
+  if (credential.azureAdProxy) {
+    const cookies = azureCookieCache[credential.id];
+    if (cookies) {
+      headers["x-forward-cookies"] = cookies;
+    }
+  }
+
+  // Always include Basic auth - Azure AD App Proxy passes it to the backend
+  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
+  headers["Authorization"] = `Basic ${auth}`;
+
+  return headers;
 }
 
 async function proxyFetch(
@@ -17,34 +47,6 @@ async function proxyFetch(
     ...options,
     headers,
   });
-}
-
-// For Azure AD App Proxy: fetch directly from the browser so session cookies
-// (which are IP-bound) are sent from the same IP that created them.
-async function directFetch(
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  return fetch(url, {
-    ...options,
-    credentials: "include",
-  });
-}
-
-function appTimeFetch(
-  credential: JiraCredential,
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
-  const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
-  headers.set("Authorization", `Basic ${auth}`);
-
-  if (credential.azureAdProxy) {
-    return directFetch(url, { ...options, headers });
-  }
-  return proxyFetch(url, { ...options, headers });
 }
 
 // Convert DD/MM/YYYY to YYYY-MM-DD format for Tempo API
@@ -120,6 +122,7 @@ interface JiraWorklog {
   id: string;
   author: {
     accountId: string;
+    name?: string;
   };
   timeSpentSeconds: number;
   started: string;
@@ -256,15 +259,24 @@ export async function createTempoWorklog(
 
 // --- AppTime (native Jira worklog) functions ---
 
+function jiraApiVersion(credential: JiraCredential): string {
+  return credential.azureAdProxy ? "2" : "3";
+}
+
 async function getExistingJiraWorklogs(
   credential: JiraCredential,
   issueKey: string,
   date: string
 ): Promise<JiraWorklog[]> {
-  const response = await appTimeFetch(
-    credential,
-    `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog`,
-    { method: "GET" }
+  const authHeaders = getAppTimeAuthHeaders(credential);
+  const apiVersion = jiraApiVersion(credential);
+
+  const response = await proxyFetch(
+    `https://${credential.jiraDomain}/rest/api/${apiVersion}/issue/${issueKey}/worklog`,
+    {
+      method: "GET",
+      headers: authHeaders,
+    }
   );
 
   if (!response.ok) return [];
@@ -276,8 +288,11 @@ async function getExistingJiraWorklogs(
   const worklogs: JiraWorklog[] = data.worklogs || [];
 
   // Filter by author and date
+  // v2 (Jira Server) uses author.name, v3 (Jira Cloud) uses author.accountId
   return worklogs.filter((w) => {
-    const matchesAuthor = w.author.accountId === credential.atlassianAccountId;
+    const matchesAuthor = credential.azureAdProxy
+      ? w.author.name === credential.atlassianAccountId
+      : w.author.accountId === credential.atlassianAccountId;
     const worklogDate = w.started.slice(0, 10); // "YYYY-MM-DD"
     return matchesAuthor && worklogDate === date;
   });
@@ -312,6 +327,24 @@ function makeAdfComment(text: string): object {
   };
 }
 
+function extractWorklogComment(credential: JiraCredential, comment: unknown): string {
+  if (credential.azureAdProxy) {
+    // v2: comment is a plain string
+    return typeof comment === "string" ? comment : "";
+  }
+  // v3: comment is ADF
+  return extractAdfText(comment);
+}
+
+function makeWorklogComment(credential: JiraCredential, text: string): unknown {
+  if (credential.azureAdProxy) {
+    // v2: plain string
+    return text;
+  }
+  // v3: ADF
+  return makeAdfComment(text);
+}
+
 async function createJiraWorklog(
   credential: JiraCredential,
   issueKey: string,
@@ -322,7 +355,7 @@ async function createJiraWorklog(
   // Check for existing worklog for this issue+comment on this date
   const existing = await getExistingJiraWorklogs(credential, issueKey, date);
   const matchingWorklog = existing.find(
-    (w) => extractAdfText(w.comment) === comment
+    (w) => extractWorklogComment(credential, w.comment) === comment
   );
 
   if (matchingWorklog) {
@@ -336,18 +369,22 @@ async function createJiraWorklog(
     );
   }
 
+  const authHeaders = getAppTimeAuthHeaders(credential);
+  const apiVersion = jiraApiVersion(credential);
   const payload = {
     timeSpentSeconds: seconds,
     started: `${date}T09:00:00.000+0000`,
-    comment: makeAdfComment(comment),
+    comment: makeWorklogComment(credential, comment),
   };
 
-  const response = await appTimeFetch(
-    credential,
-    `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog`,
+  const response = await proxyFetch(
+    `https://${credential.jiraDomain}/rest/api/${apiVersion}/issue/${issueKey}/worklog`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...authHeaders,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(payload),
     }
   );
@@ -376,18 +413,23 @@ async function updateJiraWorklog(
   seconds: number,
   comment: string = ""
 ): Promise<CreateWorklogResult> {
+  const authHeaders = getAppTimeAuthHeaders(credential);
+  const apiVersion = jiraApiVersion(credential);
+
   const payload = {
     timeSpentSeconds: seconds,
     started: `${date}T09:00:00.000+0000`,
-    comment: makeAdfComment(comment),
+    comment: makeWorklogComment(credential, comment),
   };
 
-  const response = await appTimeFetch(
-    credential,
-    `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog/${worklogId}`,
+  const response = await proxyFetch(
+    `https://${credential.jiraDomain}/rest/api/${apiVersion}/issue/${issueKey}/worklog/${worklogId}`,
     {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...authHeaders,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(payload),
     }
   );
