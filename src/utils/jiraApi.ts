@@ -20,6 +20,7 @@ export function setAzureCookies(credentialId: string, cookies: string): void {
 function getAppTimeAuthHeaders(credential: JiraCredential): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
+    "X-Atlassian-Token": "no-check",
   };
 
   if (credential.azureAdProxy) {
