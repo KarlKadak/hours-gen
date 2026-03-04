@@ -17,6 +17,10 @@ export function setAzureCookies(credentialId: string, cookies: string): void {
   azureCookieCache[credentialId] = cookies;
 }
 
+export function clearAzureCookies(credentialId: string): void {
+  delete azureCookieCache[credentialId];
+}
+
 function getAppTimeAuthHeaders(credential: JiraCredential): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -281,10 +285,16 @@ async function getExistingJiraWorklogs(
     }
   );
 
-  if (!response.ok) return [];
+  if (!response.ok) {
+    if (credential.azureAdProxy) clearAzureCookies(credential.id);
+    return [];
+  }
 
   const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) return [];
+  if (!contentType.includes("application/json")) {
+    if (credential.azureAdProxy) clearAzureCookies(credential.id);
+    return [];
+  }
 
   const data = await response.json();
   const worklogs: JiraWorklog[] = data.worklogs || [];
@@ -395,6 +405,12 @@ async function createJiraWorklog(
     return { success: true, wasUpdated: false };
   }
 
+  const ct = response.headers.get("content-type") || "";
+  if (credential.azureAdProxy && !ct.includes("application/json")) {
+    clearAzureCookies(credential.id);
+    return { success: false, error: "Azure AD session expired — re-export to re-authenticate" };
+  }
+
   let errorMsg = `HTTP ${response.status}`;
   try {
     const data = await response.json();
@@ -438,6 +454,12 @@ async function updateJiraWorklog(
 
   if (response.ok) {
     return { success: true, wasUpdated: true };
+  }
+
+  const ct = response.headers.get("content-type") || "";
+  if (credential.azureAdProxy && !ct.includes("application/json")) {
+    clearAzureCookies(credential.id);
+    return { success: false, error: "Azure AD session expired — re-export to re-authenticate" };
   }
 
   let errorMsg = `HTTP ${response.status}`;

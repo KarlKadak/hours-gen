@@ -7,6 +7,7 @@ import {
   hasAzureAdProxy,
   getCachedAzureCookies,
   setAzureCookies,
+  clearAzureCookies,
 } from "../utils/jiraApi";
 
 interface JiraExportModalProps {
@@ -130,6 +131,15 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
             idx === i ? { ...e, status: "error", error: result.error } : e
           )
         );
+
+        // If Azure AD cookies expired, abort and re-prompt
+        if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
+          setCurrentMessage("");
+          setIsExporting(false);
+          setExportEntries([]);
+          setShowCookiePrompt(true);
+          return;
+        }
       }
 
       setStats({ created: createdCount, updated: updatedCount, fail: failCount, total: entriesToExport.length });
