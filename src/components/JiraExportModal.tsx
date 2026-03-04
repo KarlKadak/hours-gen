@@ -217,7 +217,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
               Paste your Azure AD session cookies to authenticate:
             </p>
             <ol className="text-xs text-gray-400 mb-3 list-decimal list-inside space-y-1">
-              <li>Open <span className="text-blue-400">{selectedCredential?.jiraDomain}</span> in your browser and log in</li>
+              <li>Open <a href={`https://${selectedCredential?.jiraDomain}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">{selectedCredential?.jiraDomain}</a> in your browser and log in</li>
               <li>Open DevTools (F12) &gt; Application &gt; Cookies</li>
               <li>Select the domain and copy all cookie values</li>
             </ol>
