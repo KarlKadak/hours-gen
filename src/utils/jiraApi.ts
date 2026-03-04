@@ -124,6 +124,7 @@ interface JiraWorklog {
   author: {
     accountId: string;
     name?: string;
+    emailAddress?: string;
   };
   timeSpentSeconds: number;
   started: string;
@@ -289,10 +290,10 @@ async function getExistingJiraWorklogs(
   const worklogs: JiraWorklog[] = data.worklogs || [];
 
   // Filter by author and date
-  // v2 (Jira Server) uses author.name, v3 (Jira Cloud) uses author.accountId
+  // v2 (Jira Server) uses author.emailAddress, v3 (Jira Cloud) uses author.accountId
   return worklogs.filter((w) => {
     const matchesAuthor = credential.azureAdProxy
-      ? w.author.name === credential.atlassianAccountId
+      ? w.author.emailAddress === credential.jiraEmail
       : w.author.accountId === credential.atlassianAccountId;
     const worklogDate = w.started.slice(0, 10); // "YYYY-MM-DD"
     return matchesAuthor && worklogDate === date;
