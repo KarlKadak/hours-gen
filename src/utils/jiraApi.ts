@@ -1,6 +1,6 @@
 import { JiraCredential, TimeEntry } from "../types";
 
-const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
+const LOCAL_PROXY_URL = "http://localhost:9876";
 
 // Session-level Azure AD cookie cache (keyed by credential ID)
 const azureCookieCache: Record<string, string> = {};
@@ -48,7 +48,7 @@ async function proxyFetch(
   const headers = new Headers(options.headers);
   headers.set("x-target-url", url);
 
-  return fetch(PROXY_URL, {
+  return fetch(LOCAL_PROXY_URL, {
     ...options,
     headers,
   });
@@ -401,14 +401,14 @@ async function createJiraWorklog(
     }
   );
 
-  if (response.ok) {
-    return { success: true, wasUpdated: false };
-  }
-
   const ct = response.headers.get("content-type") || "";
   if (credential.azureAdProxy && !ct.includes("application/json")) {
     clearAzureCookies(credential.id);
     return { success: false, error: "Azure AD session expired — re-export to re-authenticate" };
+  }
+
+  if (response.ok) {
+    return { success: true, wasUpdated: false };
   }
 
   let errorMsg = `HTTP ${response.status}`;
@@ -452,14 +452,14 @@ async function updateJiraWorklog(
     }
   );
 
-  if (response.ok) {
-    return { success: true, wasUpdated: true };
-  }
-
   const ct = response.headers.get("content-type") || "";
   if (credential.azureAdProxy && !ct.includes("application/json")) {
     clearAzureCookies(credential.id);
     return { success: false, error: "Azure AD session expired — re-export to re-authenticate" };
+  }
+
+  if (response.ok) {
+    return { success: true, wasUpdated: true };
   }
 
   let errorMsg = `HTTP ${response.status}`;

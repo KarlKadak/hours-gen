@@ -25,7 +25,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   onManageCredentials,
 }) => {
   const [selectedCredentialId, setSelectedCredentialId] = useState<string>(
-    credentials[0]?.id || ""
+    (credentials.find((c) => c.name.toLowerCase() === projectName.toLowerCase()) || credentials[0])?.id || ""
   );
   const [isExporting, setIsExporting] = useState(false);
   const [exportEntries, setExportEntries] = useState<JiraExportEntry[]>([]);

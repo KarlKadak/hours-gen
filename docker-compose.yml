@@ -1,0 +1,8 @@
+name: hours-gen
+services:
+  proxy:
+    container_name: hours-gen-proxy
+    build: .
+    ports:
+      - "9876:9876"
+    restart: unless-stopped
