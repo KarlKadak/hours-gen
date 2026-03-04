@@ -17,7 +17,7 @@ export function setAzureCookies(credentialId: string, cookies: string): void {
   azureCookieCache[credentialId] = cookies;
 }
 
-export function clearAzureCookies(credentialId: string): void {
+function clearAzureCookies(credentialId: string): void {
   delete azureCookieCache[credentialId];
 }
 
