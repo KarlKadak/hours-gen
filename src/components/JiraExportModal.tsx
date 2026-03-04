@@ -7,7 +7,6 @@ import {
   hasAzureAdProxy,
   getCachedAzureCookies,
   setAzureCookies,
-  clearAzureCookies,
 } from "../utils/jiraApi";
 
 interface JiraExportModalProps {
