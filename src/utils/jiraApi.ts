@@ -2,38 +2,8 @@ import { JiraCredential, TimeEntry } from "../types";
 
 const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
 
-// Session-level Azure AD cookie cache (keyed by credential ID)
-const azureCookieCache: Record<string, string> = {};
-
 export function hasAzureAdProxy(credential: JiraCredential): boolean {
   return !!credential.azureAdProxy;
-}
-
-export function getCachedAzureCookies(credentialId: string): string | null {
-  return azureCookieCache[credentialId] || null;
-}
-
-export function setAzureCookies(credentialId: string, cookies: string): void {
-  azureCookieCache[credentialId] = cookies;
-}
-
-function getAppTimeAuthHeaders(credential: JiraCredential): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-  };
-
-  if (credential.azureAdProxy) {
-    const cookies = azureCookieCache[credential.id];
-    if (cookies) {
-      headers["x-forward-cookies"] = cookies;
-    }
-  }
-
-  // Always include Basic auth - Azure AD App Proxy passes it to the backend
-  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
-  headers["Authorization"] = `Basic ${auth}`;
-
-  return headers;
 }
 
 async function proxyFetch(
@@ -47,6 +17,34 @@ async function proxyFetch(
     ...options,
     headers,
   });
+}
+
+// For Azure AD App Proxy: fetch directly from the browser so session cookies
+// (which are IP-bound) are sent from the same IP that created them.
+async function directFetch(
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  return fetch(url, {
+    ...options,
+    credentials: "include",
+  });
+}
+
+function appTimeFetch(
+  credential: JiraCredential,
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
+  const headers = new Headers(options.headers);
+  headers.set("Accept", "application/json");
+  headers.set("Authorization", `Basic ${auth}`);
+
+  if (credential.azureAdProxy) {
+    return directFetch(url, { ...options, headers });
+  }
+  return proxyFetch(url, { ...options, headers });
 }
 
 // Convert DD/MM/YYYY to YYYY-MM-DD format for Tempo API
@@ -263,14 +261,10 @@ async function getExistingJiraWorklogs(
   issueKey: string,
   date: string
 ): Promise<JiraWorklog[]> {
-  const authHeaders = getAppTimeAuthHeaders(credential);
-
-  const response = await proxyFetch(
+  const response = await appTimeFetch(
+    credential,
     `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog`,
-    {
-      method: "GET",
-      headers: authHeaders,
-    }
+    { method: "GET" }
   );
 
   if (!response.ok) return [];
@@ -342,21 +336,18 @@ async function createJiraWorklog(
     );
   }
 
-  const authHeaders = getAppTimeAuthHeaders(credential);
   const payload = {
     timeSpentSeconds: seconds,
     started: `${date}T09:00:00.000+0000`,
     comment: makeAdfComment(comment),
   };
 
-  const response = await proxyFetch(
+  const response = await appTimeFetch(
+    credential,
     `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog`,
     {
       method: "POST",
-      headers: {
-        ...authHeaders,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }
   );
@@ -385,22 +376,18 @@ async function updateJiraWorklog(
   seconds: number,
   comment: string = ""
 ): Promise<CreateWorklogResult> {
-  const authHeaders = getAppTimeAuthHeaders(credential);
-
   const payload = {
     timeSpentSeconds: seconds,
     started: `${date}T09:00:00.000+0000`,
     comment: makeAdfComment(comment),
   };
 
-  const response = await proxyFetch(
+  const response = await appTimeFetch(
+    credential,
     `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}/worklog/${worklogId}`,
     {
       method: "PUT",
-      headers: {
-        ...authHeaders,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }
   );
