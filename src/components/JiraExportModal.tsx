@@ -3,6 +3,7 @@ import { JiraCredential, TimeEntry, SubEntry, JiraExportEntry } from "../types";
 import {
   exportWorklog,
   extractIssueKey,
+  extractBracketComment,
   hasAzureAdProxy,
   getCachedAzureCookies,
   setAzureCookies,
@@ -409,7 +410,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
                       </td>
                       <td className="p-2 text-gray-400">{entry.date}</td>
                       <td className="p-2">{entry.issueKey}</td>
-                      <td className="p-2 text-gray-400 truncate max-w-48">{entry.description}</td>
+                      <td className="p-2 text-gray-400 truncate max-w-48">{extractBracketComment(entry.description)}</td>
                       <td className="p-2">{entry.hours.toFixed(2)}</td>
                     </tr>
                   ))}

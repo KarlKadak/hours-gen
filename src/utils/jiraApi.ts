@@ -60,7 +60,7 @@ function stripAnnotations(text: string): string {
   return text.replace(/\([^)]*\)\s*/g, "").replace(/\[[^\]]*\]\s*/g, "").trim();
 }
 
-function extractBracketComment(text: string): string {
+export function extractBracketComment(text: string): string {
   const matches = text.match(/\[([^\]]*)\]/g);
   if (!matches) return "";
   return matches.map((m) => m.slice(1, -1)).join("; ");
