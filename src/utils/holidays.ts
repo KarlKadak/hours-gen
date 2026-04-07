@@ -1,6 +1,6 @@
 import { HolidayEntry, TargetHoursConfig } from "../types";
 
-const PROXY_URL = "https://hours-api.karl-ccd.workers.dev/";
+const PROXY_URL = "http://localhost:9876";
 const HOLIDAYS_URL = "https://xn--riigiphad-v9a.ee/et/luhendatud-toopaevad?output=json";
 
 export async function fetchHolidays(): Promise<HolidayEntry[]> {
