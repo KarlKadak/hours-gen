@@ -40,42 +40,66 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   const validEntries = entries.filter((e) => extractIssueKey(e["Description"] as string));
   const invalidCount = entries.length - validEntries.length;
 
-  const exportEntryCount = validEntries.reduce((count, entry) => {
-    const subs = entry["_subEntries"] as SubEntry[] | undefined;
-    if (subs && subs.length > 0) {
-      return count + subs.filter((s) => extractIssueKey(s.description)).length;
-    }
-    return count + 1;
-  }, 0);
-
   const prepareEntries = useCallback((): JiraExportEntry[] => {
-    const result: JiraExportEntry[] = [];
+    // First collect all individual entries
+    const raw: { date: string; issueKey: string; hours: number; description: string }[] = [];
     for (const entry of validEntries) {
       const subs = entry["_subEntries"] as SubEntry[] | undefined;
       if (subs && subs.length > 0) {
         for (const sub of subs) {
           const issueKey = extractIssueKey(sub.description);
           if (!issueKey) continue;
-          result.push({
+          raw.push({
             date: entry["Start Date"] as string,
             issueKey,
             hours: sub.duration,
             description: sub.description,
-            status: "pending" as const,
           });
         }
       } else {
-        result.push({
+        const issueKey = extractIssueKey(entry["Description"] as string);
+        if (!issueKey) continue;
+        raw.push({
           date: entry["Start Date"] as string,
-          issueKey: extractIssueKey(entry["Description"] as string) || "N/A",
+          issueKey,
           hours: entry["Duration (decimal)"] as number,
           description: entry["Description"] as string,
-          status: "pending" as const,
         });
       }
     }
-    return result;
+
+    // Group by issueKey + date, sum hours, concatenate descriptions with ";"
+    const grouped = new Map<string, { date: string; issueKey: string; hours: number; descriptions: string[] }>();
+    for (const item of raw) {
+      const key = `${item.issueKey}::${item.date}`;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.hours += item.hours;
+        const desc = extractBracketComment(item.description);
+        if (desc && !existing.descriptions.includes(desc)) {
+          existing.descriptions.push(desc);
+        }
+      } else {
+        const desc = extractBracketComment(item.description);
+        grouped.set(key, {
+          date: item.date,
+          issueKey: item.issueKey,
+          hours: item.hours,
+          descriptions: desc ? [desc] : [],
+        });
+      }
+    }
+
+    return Array.from(grouped.values()).map((g) => ({
+      date: g.date,
+      issueKey: g.issueKey,
+      hours: g.hours,
+      description: g.descriptions.join("; "),
+      status: "pending" as const,
+    }));
   }, [validEntries]);
+
+  const exportEntryCount = prepareEntries().length;
 
   const runExport = async (credential: JiraCredential) => {
     abortRef.current = false;
@@ -99,16 +123,13 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
       );
 
       const exportEntry = entriesToExport[i];
-      const timeEntry: TimeEntry = {
-        "Project": projectName,
-        "Description": exportEntry.description,
-        "Start Date": exportEntry.date,
-        "Duration (decimal)": exportEntry.hours,
-      };
 
       const result = await exportWorklog({
         credential,
-        entry: timeEntry,
+        issueKey: exportEntry.issueKey,
+        date: exportEntry.date,
+        hours: exportEntry.hours,
+        comment: exportEntry.description,
         onProgress: setCurrentMessage,
       });
 
@@ -419,7 +440,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
                       </td>
                       <td className="p-2 text-gray-400">{entry.date}</td>
                       <td className="p-2">{entry.issueKey}</td>
-                      <td className="p-2 text-gray-400 truncate max-w-48">{extractBracketComment(entry.description)}</td>
+                      <td className="p-2 text-gray-400 truncate max-w-48">{entry.description}</td>
                       <td className="p-2">{entry.hours.toFixed(2)}</td>
                     </tr>
                   ))}

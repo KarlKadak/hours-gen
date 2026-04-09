@@ -160,6 +160,22 @@ async function getExistingWorklogs(
   return [];
 }
 
+async function deleteTempoWorklog(
+  credential: JiraCredential,
+  worklogId: number
+): Promise<boolean> {
+  const response = await proxyFetch(
+    `https://api.tempo.io/4/worklogs/${worklogId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${credential.tempoApiToken}`,
+      },
+    }
+  );
+  return response.ok;
+}
+
 async function updateTempoWorklog(
   credential: JiraCredential,
   worklogId: number,
@@ -211,17 +227,22 @@ export async function createTempoWorklog(
   seconds: number,
   description: string = ""
 ): Promise<CreateWorklogResult> {
-  // Check for existing worklog for this issue+description on this date
+  // Find all existing worklogs for this issue on this date
   const existingWorklogs = await getExistingWorklogs(credential, date);
-  const existingWorklog = existingWorklogs.find(
-    (w) => w.issue.id === issueId && (w.description || "") === description
+  const matchingWorklogs = existingWorklogs.filter(
+    (w) => w.issue.id === issueId
   );
 
-  if (existingWorklog) {
-    // Update existing worklog instead of creating a new one
+  if (matchingWorklogs.length > 0) {
+    // Keep the first one, delete the rest
+    const [toKeep, ...toDelete] = matchingWorklogs;
+    for (const wl of toDelete) {
+      await deleteTempoWorklog(credential, wl.tempoWorklogId);
+    }
+    // Update the remaining worklog
     return updateTempoWorklog(
       credential,
-      existingWorklog.tempoWorklogId,
+      toKeep.tempoWorklogId,
       issueId,
       date,
       seconds,
@@ -364,17 +385,20 @@ async function createJiraWorklog(
   seconds: number,
   comment: string = ""
 ): Promise<CreateWorklogResult> {
-  // Check for existing worklog for this issue+comment on this date
+  // Find all existing worklogs for this issue on this date
   const existing = await getExistingJiraWorklogs(credential, issueKey, date);
-  const matchingWorklog = existing.find(
-    (w) => extractWorklogComment(credential, w.comment) === comment
-  );
 
-  if (matchingWorklog) {
+  if (existing.length > 0) {
+    // Keep the first one, delete the rest
+    const [toKeep, ...toDelete] = existing;
+    for (const wl of toDelete) {
+      await deleteJiraWorklog(credential, issueKey, wl.id);
+    }
+    // Update the remaining worklog
     return updateJiraWorklog(
       credential,
       issueKey,
-      matchingWorklog.id,
+      toKeep.id,
       date,
       seconds,
       comment
@@ -421,6 +445,24 @@ async function createJiraWorklog(
   }
 
   return { success: false, error: errorMsg };
+}
+
+async function deleteJiraWorklog(
+  credential: JiraCredential,
+  issueKey: string,
+  worklogId: string
+): Promise<boolean> {
+  const authHeaders = getAppTimeAuthHeaders(credential);
+  const apiVersion = jiraApiVersion(credential);
+
+  const response = await proxyFetch(
+    `https://${credential.jiraDomain}/rest/api/${apiVersion}/issue/${issueKey}/worklog/${worklogId}`,
+    {
+      method: "DELETE",
+      headers: authHeaders,
+    }
+  );
+  return response.ok;
 }
 
 async function updateJiraWorklog(
@@ -476,7 +518,10 @@ async function updateJiraWorklog(
 
 export interface ExportWorklogParams {
   credential: JiraCredential;
-  entry: TimeEntry;
+  issueKey: string;
+  date: string;
+  hours: number;
+  comment: string;
   onProgress?: (message: string) => void;
 }
 
@@ -491,32 +536,22 @@ const issueIdCache: Record<string, Record<string, number>> = {};
 
 export async function exportWorklog({
   credential,
-  entry,
+  issueKey,
+  date,
+  hours,
+  comment,
   onProgress,
 }: ExportWorklogParams): Promise<ExportWorklogResult> {
-  const description = entry["Description"] as string;
-  const issueKey = extractIssueKey(description);
-
-  if (!issueKey) {
-    return {
-      success: false,
-      error: "No issue key found in description",
-      issueKey: "N/A",
-    };
-  }
-
-  const date = toISODate(entry["Start Date"] as string);
-  const hours = entry["Duration (decimal)"] as number;
+  const isoDate = toISODate(date);
   const seconds = hoursToSeconds(hours);
-  const comment = extractBracketComment(description);
 
   if (credential.type === "apptime") {
-    onProgress?.(`Creating worklog for ${issueKey}...`);
+    onProgress?.(`Exporting worklog for ${issueKey}...`);
 
     const result = await createJiraWorklog(
       credential,
       issueKey,
-      date,
+      isoDate,
       seconds,
       comment
     );
@@ -546,12 +581,12 @@ export async function exportWorklog({
     issueId = fetchedId;
   }
 
-  onProgress?.(`Creating worklog for ${issueKey}...`);
+  onProgress?.(`Exporting worklog for ${issueKey}...`);
 
   const result = await createTempoWorklog(
     credential,
     issueId,
-    date,
+    isoDate,
     seconds,
     comment
   );
