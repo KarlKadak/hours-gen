@@ -331,15 +331,6 @@ async function getExistingJiraWorklogs(
   });
 }
 
-function extractAdfText(adf: unknown): string {
-  if (!adf || typeof adf !== "object") return "";
-  const doc = adf as { content?: { content?: { text?: string }[] }[] };
-  return (doc.content || [])
-    .flatMap((block) => (block.content || []).map((node) => node.text || ""))
-    .join("")
-    .trim();
-}
-
 function makeAdfComment(text: string): object {
   if (!text) {
     return {
