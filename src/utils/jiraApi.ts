@@ -360,15 +360,6 @@ function makeAdfComment(text: string): object {
   };
 }
 
-function extractWorklogComment(credential: JiraCredential, comment: unknown): string {
-  if (credential.azureAdProxy) {
-    // v2: comment is a plain string
-    return typeof comment === "string" ? comment : "";
-  }
-  // v3: comment is ADF
-  return extractAdfText(comment);
-}
-
 function makeWorklogComment(credential: JiraCredential, text: string): unknown {
   if (credential.azureAdProxy) {
     // v2: plain string
