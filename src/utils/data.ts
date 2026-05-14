@@ -17,6 +17,15 @@ function stripAnnotations(text: string): string {
   return text.replace(/\([^)]*\)\s*/g, "").replace(/\[[^\]]*\]\s*/g, "").trim();
 }
 
+// Find the start-time value tolerating header case/whitespace variants
+function getStartTime(entry: Record<string, string>): string {
+  if (entry["Start Time"]) return entry["Start Time"];
+  for (const key of Object.keys(entry)) {
+    if (key.trim().toLowerCase() === "start time") return entry[key];
+  }
+  return "";
+}
+
 export const groupAndMerge = (
   rows: Record<string, string>[],
   coeff: number,
@@ -38,7 +47,7 @@ export const groupAndMerge = (
       const normalizedDesc = normalizeDescription(desc);
       const strippedDesc = stripAnnotations(normalizedDesc);
       const date = entry["Start Date"];
-      const startTime = entry["Start Time"] || "";
+      const startTime = getStartTime(entry);
       // Use stripped description for merge key so entries differing only in comments merge together
       const mergeKey = `${strippedDesc}__${date}`;
       let dur = parseFloat(entry["Duration (decimal)"] || "0");
