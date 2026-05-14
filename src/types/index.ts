@@ -38,6 +38,7 @@ export interface StoredProjectMapping {
 export interface SubEntry {
   description: string;
   duration: number;
+  startTime?: string;
 }
 
 export interface TimeEntry {

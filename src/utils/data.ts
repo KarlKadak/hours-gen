@@ -38,6 +38,7 @@ export const groupAndMerge = (
       const normalizedDesc = normalizeDescription(desc);
       const strippedDesc = stripAnnotations(normalizedDesc);
       const date = entry["Start Date"];
+      const startTime = entry["Start Time"] || "";
       // Use stripped description for merge key so entries differing only in comments merge together
       const mergeKey = `${strippedDesc}__${date}`;
       let dur = parseFloat(entry["Duration (decimal)"] || "0");
@@ -51,7 +52,7 @@ export const groupAndMerge = (
       if (!merged[mergeKey]) {
         // Store with stripped description (no comments) for display/CSV
         merged[mergeKey] = { ...entry, "Description": strippedDesc, "Duration (decimal)": roundedHours } as TimeEntry;
-        merged[mergeKey]["_subEntries"] = [{ description: normalizedDesc, duration: roundedHours }] as SubEntry[];
+        merged[mergeKey]["_subEntries"] = [{ description: normalizedDesc, duration: roundedHours, startTime }] as SubEntry[];
       } else {
         merged[mergeKey]["Duration (decimal)"] =
           (merged[mergeKey]["Duration (decimal)"] as number) + roundedHours;
@@ -60,8 +61,12 @@ export const groupAndMerge = (
         const existing = subs.find((s) => s.description === normalizedDesc);
         if (existing) {
           existing.duration += roundedHours;
+          // Keep earliest start time so chronological ordering uses the first occurrence
+          if (startTime && (!existing.startTime || startTime < existing.startTime)) {
+            existing.startTime = startTime;
+          }
         } else {
-          subs.push({ description: normalizedDesc, duration: roundedHours });
+          subs.push({ description: normalizedDesc, duration: roundedHours, startTime });
         }
       }
     }

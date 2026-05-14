@@ -42,7 +42,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
 
   const prepareEntries = useCallback((): JiraExportEntry[] => {
     // First collect all individual entries
-    const raw: { date: string; issueKey: string; hours: number; description: string }[] = [];
+    const raw: { date: string; startTime: string; issueKey: string; hours: number; description: string }[] = [];
     for (const entry of validEntries) {
       const subs = entry["_subEntries"] as SubEntry[] | undefined;
       if (subs && subs.length > 0) {
@@ -51,6 +51,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
           if (!issueKey) continue;
           raw.push({
             date: entry["Start Date"] as string,
+            startTime: sub.startTime || "",
             issueKey,
             hours: sub.duration,
             description: sub.description,
@@ -61,12 +62,17 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
         if (!issueKey) continue;
         raw.push({
           date: entry["Start Date"] as string,
+          startTime: (entry["Start Time"] as string) || "",
           issueKey,
           hours: entry["Duration (decimal)"] as number,
           description: entry["Description"] as string,
         });
       }
     }
+
+    // Sort by ascending start time so concatenated descriptions follow chronological order.
+    // Items in the same (issueKey, date) group share a date, so startTime alone orders them.
+    raw.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
     // Group by issueKey + date, sum hours, concatenate descriptions with ";"
     const grouped = new Map<string, { date: string; issueKey: string; hours: number; descriptions: string[] }>();
