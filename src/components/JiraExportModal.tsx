@@ -75,7 +75,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
     raw.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
     // Group by issueKey + date, sum hours, concatenate descriptions with ";"
-    const grouped = new Map<string, { date: string; issueKey: string; hours: number; descriptions: string[] }>();
+    const grouped = new Map<string, { date: string; issueKey: string; hours: number; descriptions: string[]; earliestStartTime: string }>();
     for (const item of raw) {
       const key = `${item.issueKey}::${item.date}`;
       const existing = grouped.get(key);
@@ -92,17 +92,30 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
           issueKey: item.issueKey,
           hours: item.hours,
           descriptions: desc ? [desc] : [],
+          earliestStartTime: item.startTime,
         });
       }
     }
 
-    return Array.from(grouped.values()).map((g) => ({
-      date: g.date,
-      issueKey: g.issueKey,
-      hours: g.hours,
-      description: g.descriptions.join("; "),
-      status: "pending" as const,
-    }));
+    // Sort export rows by date ascending so Jira insertion follows chronological order
+    const parseDate = (s: string) => {
+      const [d, m, y] = s.split("/").map(Number);
+      return new Date(y, m - 1, d).getTime();
+    };
+
+    return Array.from(grouped.values())
+      .sort((a, b) => {
+        const dateDiff = parseDate(a.date) - parseDate(b.date);
+        if (dateDiff !== 0) return dateDiff;
+        return a.earliestStartTime.localeCompare(b.earliestStartTime);
+      })
+      .map((g) => ({
+        date: g.date,
+        issueKey: g.issueKey,
+        hours: g.hours,
+        description: g.descriptions.join("; "),
+        status: "pending" as const,
+      }));
   }, [validEntries]);
 
   const exportEntryCount = prepareEntries().length;
