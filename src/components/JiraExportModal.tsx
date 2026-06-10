@@ -2,12 +2,15 @@ import { FC, useState, useCallback, useRef } from "react";
 import { JiraCredential, TimeEntry, SubEntry, JiraExportEntry } from "../types";
 import {
   exportWorklog,
+  prepareExportContext,
   extractIssueKey,
   extractBracketComment,
   hasAzureAdProxy,
   getCachedAzureCookies,
   setAzureCookies,
 } from "../utils/jiraApi";
+
+const CONCURRENCY = 4;
 
 interface JiraExportModalProps {
   credentials: JiraCredential[];
@@ -30,7 +33,7 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportEntries, setExportEntries] = useState<JiraExportEntry[]>([]);
   const [currentMessage, setCurrentMessage] = useState<string>("");
-  const [stats, setStats] = useState({ created: 0, updated: 0, fail: 0, total: 0 });
+  const [stats, setStats] = useState({ created: 0, updated: 0, skipped: 0, fail: 0, total: 0 });
   const abortRef = useRef(false);
 
   // Azure AD cookie prompt state
@@ -126,67 +129,99 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
 
     const entriesToExport = prepareEntries();
     setExportEntries(entriesToExport);
-    setStats({ created: 0, updated: 0, fail: 0, total: entriesToExport.length });
+    setStats({ created: 0, updated: 0, skipped: 0, fail: 0, total: entriesToExport.length });
+
+    const repromptForCookies = () => {
+      setCurrentMessage("");
+      setIsExporting(false);
+      setExportEntries([]);
+      setShowCookiePrompt(true);
+    };
+
+    // Phase 1: fetch existing worklogs (and issue IDs) up front, in parallel
+    setCurrentMessage("Fetching existing worklogs...");
+    const context = await prepareExportContext(
+      credential,
+      entriesToExport.map((e) => ({ issueKey: e.issueKey, date: e.date }))
+    );
+
+    // Azure AD cookies may have expired during prefetch
+    if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
+      repromptForCookies();
+      return;
+    }
+
+    // Phase 2: export with bounded concurrency
+    setCurrentMessage(`Exporting ${entriesToExport.length} worklogs...`);
 
     let createdCount = 0;
     let updatedCount = 0;
+    let skippedCount = 0;
     let failCount = 0;
+    let authExpired = false;
+    let nextIndex = 0;
 
-    for (let i = 0; i < entriesToExport.length; i++) {
-      if (abortRef.current) break;
-
+    const setRowStatus = (idx: number, patch: Partial<JiraExportEntry>) =>
       setExportEntries((prev) =>
-        prev.map((e, idx) =>
-          idx === i ? { ...e, status: "in_progress" } : e
-        )
+        prev.map((e, i) => (i === idx ? { ...e, ...patch } : e))
       );
 
-      const exportEntry = entriesToExport[i];
+    const worker = async () => {
+      while (!abortRef.current && !authExpired) {
+        const i = nextIndex++;
+        if (i >= entriesToExport.length) return;
 
-      const result = await exportWorklog({
-        credential,
-        issueKey: exportEntry.issueKey,
-        date: exportEntry.date,
-        hours: exportEntry.hours,
-        comment: exportEntry.description,
-        onProgress: setCurrentMessage,
-      });
+        const exportEntry = entriesToExport[i];
+        setRowStatus(i, { status: "in_progress" });
 
-      if (result.success) {
-        if (result.wasUpdated) {
-          updatedCount++;
+        const result = await exportWorklog({
+          credential,
+          issueKey: exportEntry.issueKey,
+          date: exportEntry.date,
+          hours: exportEntry.hours,
+          comment: exportEntry.description,
+          context,
+        });
+
+        if (result.success) {
+          if (result.wasSkipped) {
+            skippedCount++;
+            setRowStatus(i, { status: "skipped" });
+          } else if (result.wasUpdated) {
+            updatedCount++;
+            setRowStatus(i, { status: "updated" });
+          } else {
+            createdCount++;
+            setRowStatus(i, { status: "created" });
+          }
         } else {
-          createdCount++;
+          failCount++;
+          setRowStatus(i, { status: "error", error: result.error });
+
+          // If Azure AD cookies expired, stop launching new work and re-prompt
+          if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
+            authExpired = true;
+          }
         }
-        setExportEntries((prev) =>
-          prev.map((e, idx) =>
-            idx === i ? { ...e, status: result.wasUpdated ? "updated" : "created" } : e
-          )
-        );
-      } else {
-        failCount++;
-        setExportEntries((prev) =>
-          prev.map((e, idx) =>
-            idx === i ? { ...e, status: "error", error: result.error } : e
-          )
-        );
 
-        // If Azure AD cookies expired, abort and re-prompt
-        if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
-          setCurrentMessage("");
-          setIsExporting(false);
-          setExportEntries([]);
-          setShowCookiePrompt(true);
-          return;
-        }
+        setStats({
+          created: createdCount,
+          updated: updatedCount,
+          skipped: skippedCount,
+          fail: failCount,
+          total: entriesToExport.length,
+        });
       }
+    };
 
-      setStats({ created: createdCount, updated: updatedCount, fail: failCount, total: entriesToExport.length });
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, entriesToExport.length) }, worker)
+    );
 
-      // Small delay to avoid rate limiting
-      if (i < entriesToExport.length - 1 && !abortRef.current) {
-        await new Promise((r) => setTimeout(r, 300));
-      }
+    // Azure AD session expired mid-export — re-prompt for cookies
+    if (authExpired) {
+      repromptForCookies();
+      return;
     }
 
     setCurrentMessage("");
@@ -238,7 +273,11 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
 
   const progressPercent =
     stats.total > 0
-      ? Math.round(((stats.created + stats.updated + stats.fail) / stats.total) * 100)
+      ? Math.round(
+          ((stats.created + stats.updated + stats.skipped + stats.fail) /
+            stats.total) *
+            100
+        )
       : 0;
 
   const isComplete = !isExporting && exportEntries.length > 0;
@@ -407,6 +446,9 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
               <span className="text-yellow-400">
                 Updated: {stats.updated}
               </span>
+              <span className="text-gray-300">
+                Skipped: {stats.skipped}
+              </span>
               <span className="text-red-400">
                 Failed: {stats.fail}
               </span>
@@ -447,6 +489,11 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
                         )}
                         {entry.status === "updated" && (
                           <span className="text-yellow-400">UPD</span>
+                        )}
+                        {entry.status === "skipped" && (
+                          <span className="text-gray-400" title="Already up to date">
+                            SKIP
+                          </span>
                         )}
                         {entry.status === "error" && (
                           <span

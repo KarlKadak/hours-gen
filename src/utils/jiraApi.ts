@@ -64,6 +64,23 @@ function stripAnnotations(text: string): string {
   return text.replace(/\([^)]*\)\s*/g, "").replace(/\[[^\]]*\]\s*/g, "").trim();
 }
 
+// Extract plain text from a worklog comment, which may be a plain string
+// (Jira v2 / Tempo) or an ADF document object (Jira v3). Used to compare an
+// existing worklog's comment against what we would write.
+function worklogCommentText(comment: unknown): string {
+  if (!comment) return "";
+  if (typeof comment === "string") return comment.trim();
+  const parts: string[] = [];
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== "object") return;
+    const obj = node as { text?: unknown; content?: unknown };
+    if (typeof obj.text === "string") parts.push(obj.text);
+    if (Array.isArray(obj.content)) obj.content.forEach(walk);
+  };
+  walk(comment);
+  return parts.join("").trim();
+}
+
 export function extractBracketComment(text: string): string {
   const matches = text.match(/\[([^\]]*)\]/g);
   if (!matches) return "";
@@ -111,6 +128,7 @@ export interface CreateWorklogResult {
   success: boolean;
   error?: string;
   wasUpdated?: boolean;
+  wasSkipped?: boolean;
 }
 
 interface TempoWorklog {
@@ -220,18 +238,22 @@ async function updateTempoWorklog(
   return { success: false, error: errorMsg };
 }
 
-export async function createTempoWorklog(
+async function applyTempoWorklog(
   credential: JiraCredential,
   issueId: number,
   date: string,
   seconds: number,
-  description: string = ""
+  description: string,
+  matchingWorklogs: TempoWorklog[]
 ): Promise<CreateWorklogResult> {
-  // Find all existing worklogs for this issue on this date
-  const existingWorklogs = await getExistingWorklogs(credential, date);
-  const matchingWorklogs = existingWorklogs.filter(
-    (w) => w.issue.id === issueId
-  );
+  // Skip when the only existing worklog already holds identical data
+  if (
+    matchingWorklogs.length === 1 &&
+    matchingWorklogs[0].timeSpentSeconds === seconds &&
+    (matchingWorklogs[0].description ?? "").trim() === description.trim()
+  ) {
+    return { success: true, wasSkipped: true };
+  }
 
   if (matchingWorklogs.length > 0) {
     // Keep the first one, delete the rest
@@ -292,8 +314,7 @@ function jiraApiVersion(credential: JiraCredential): string {
 
 async function getExistingJiraWorklogs(
   credential: JiraCredential,
-  issueKey: string,
-  date: string
+  issueKey: string
 ): Promise<JiraWorklog[]> {
   const authHeaders = getAppTimeAuthHeaders(credential);
   const apiVersion = jiraApiVersion(credential);
@@ -320,15 +341,13 @@ async function getExistingJiraWorklogs(
   const data = await response.json();
   const worklogs: JiraWorklog[] = data.worklogs || [];
 
-  // Filter by author and date
+  // Filter by author only; date filtering happens at export-decision time.
   // v2 (Jira Server) uses author.emailAddress, v3 (Jira Cloud) uses author.accountId
-  return worklogs.filter((w) => {
-    const matchesAuthor = credential.azureAdProxy
+  return worklogs.filter((w) =>
+    credential.azureAdProxy
       ? w.author.emailAddress === credential.jiraEmail
-      : w.author.accountId === credential.atlassianAccountId;
-    const worklogDate = w.started.slice(0, 10); // "YYYY-MM-DD"
-    return matchesAuthor && worklogDate === date;
-  });
+      : w.author.accountId === credential.atlassianAccountId
+  );
 }
 
 function makeAdfComment(text: string): object {
@@ -360,15 +379,22 @@ function makeWorklogComment(credential: JiraCredential, text: string): unknown {
   return makeAdfComment(text);
 }
 
-async function createJiraWorklog(
+async function applyJiraWorklog(
   credential: JiraCredential,
   issueKey: string,
   date: string,
   seconds: number,
-  comment: string = ""
+  comment: string,
+  existing: JiraWorklog[]
 ): Promise<CreateWorklogResult> {
-  // Find all existing worklogs for this issue on this date
-  const existing = await getExistingJiraWorklogs(credential, issueKey, date);
+  // Skip when the only existing worklog already holds identical data
+  if (
+    existing.length === 1 &&
+    existing[0].timeSpentSeconds === seconds &&
+    worklogCommentText(existing[0].comment) === comment.trim()
+  ) {
+    return { success: true, wasSkipped: true };
+  }
 
   if (existing.length > 0) {
     // Keep the first one, delete the rest
@@ -512,9 +538,72 @@ export interface ExportWorklogResult {
   error?: string;
   issueKey: string;
   wasUpdated?: boolean;
+  wasSkipped?: boolean;
 }
 
+// Pre-fetched existing-worklog data, gathered once before the export loop so
+// each entry can decide create/update/skip locally without its own GET.
+export interface TempoExportContext {
+  type: "tempo";
+  worklogsByDate: Map<string, TempoWorklog[]>; // keyed by ISO date (YYYY-MM-DD)
+  issueIds: Map<string, number>; // issueKey -> Jira issue id (absent if lookup failed)
+}
+
+export interface AppTimeExportContext {
+  type: "apptime";
+  worklogsByIssue: Map<string, JiraWorklog[]>; // author-filtered, all dates
+}
+
+export type ExportContext = TempoExportContext | AppTimeExportContext;
+
 const issueIdCache: Record<string, Record<string, number>> = {};
+
+// Fetch everything the export needs up front. Calls run in parallel: one per
+// unique date (Tempo) or unique issue (AppTime), plus issue-id resolution.
+export async function prepareExportContext(
+  credential: JiraCredential,
+  entries: { issueKey: string; date: string }[]
+): Promise<ExportContext> {
+  const issueKeys = [...new Set(entries.map((e) => e.issueKey))];
+
+  if (credential.type === "apptime") {
+    const worklogsByIssue = new Map<string, JiraWorklog[]>();
+    await Promise.all(
+      issueKeys.map(async (key) => {
+        worklogsByIssue.set(key, await getExistingJiraWorklogs(credential, key));
+      })
+    );
+    return { type: "apptime", worklogsByIssue };
+  }
+
+  // Tempo: fetch user worklogs per unique date and resolve issue ids
+  const cacheKey = credential.jiraDomain;
+  if (!issueIdCache[cacheKey]) issueIdCache[cacheKey] = {};
+
+  const isoDates = [...new Set(entries.map((e) => toISODate(e.date)))];
+  const worklogsByDate = new Map<string, TempoWorklog[]>();
+  const issueIds = new Map<string, number>();
+
+  await Promise.all([
+    ...isoDates.map(async (isoDate) => {
+      worklogsByDate.set(isoDate, await getExistingWorklogs(credential, isoDate));
+    }),
+    ...issueKeys.map(async (key) => {
+      const cached = issueIdCache[cacheKey][key];
+      const id = cached ?? (await getJiraIssueId(credential, key));
+      if (id) {
+        issueIdCache[cacheKey][key] = id;
+        issueIds.set(key, id);
+      }
+    }),
+  ]);
+
+  return { type: "tempo", worklogsByDate, issueIds };
+}
+
+export interface ExportWorklogParamsWithContext extends ExportWorklogParams {
+  context: ExportContext;
+}
 
 export async function exportWorklog({
   credential,
@@ -522,55 +611,53 @@ export async function exportWorklog({
   date,
   hours,
   comment,
+  context,
   onProgress,
-}: ExportWorklogParams): Promise<ExportWorklogResult> {
+}: ExportWorklogParamsWithContext): Promise<ExportWorklogResult> {
   const isoDate = toISODate(date);
   const seconds = hoursToSeconds(hours);
 
-  if (credential.type === "apptime") {
+  if (context.type === "apptime") {
     onProgress?.(`Exporting worklog for ${issueKey}...`);
 
-    const result = await createJiraWorklog(
+    const all = context.worklogsByIssue.get(issueKey) ?? [];
+    const matching = all.filter((w) => w.started.slice(0, 10) === isoDate);
+
+    const result = await applyJiraWorklog(
       credential,
       issueKey,
       isoDate,
       seconds,
-      comment
+      comment,
+      matching
     );
 
     return { ...result, issueKey };
   }
 
-  // Default: Tempo flow
-  const cacheKey = credential.jiraDomain;
-  if (!issueIdCache[cacheKey]) {
-    issueIdCache[cacheKey] = {};
-  }
-
-  let issueId = issueIdCache[cacheKey][issueKey];
-
+  // Tempo flow
+  const issueId = context.issueIds.get(issueKey);
   if (!issueId) {
-    onProgress?.(`Fetching issue ID for ${issueKey}...`);
-    const fetchedId = await getJiraIssueId(credential, issueKey);
-    if (!fetchedId) {
-      return {
-        success: false,
-        error: `Failed to get issue ID for ${issueKey}`,
-        issueKey,
-      };
-    }
-    issueIdCache[cacheKey][issueKey] = fetchedId;
-    issueId = fetchedId;
+    return {
+      success: false,
+      error: `Failed to get issue ID for ${issueKey}`,
+      issueKey,
+    };
   }
 
   onProgress?.(`Exporting worklog for ${issueKey}...`);
 
-  const result = await createTempoWorklog(
+  const matching = (context.worklogsByDate.get(isoDate) ?? []).filter(
+    (w) => w.issue.id === issueId
+  );
+
+  const result = await applyTempoWorklog(
     credential,
     issueId,
     isoDate,
     seconds,
-    comment
+    comment,
+    matching
   );
 
   return {
