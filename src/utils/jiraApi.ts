@@ -1,6 +1,5 @@
 import { JiraCredential, TimeEntry } from "../types";
-
-const LOCAL_PROXY_URL = "http://localhost:9876";
+import { proxyFetch } from "./proxy";
 
 // Session-level Azure AD cookie cache (keyed by credential ID)
 const azureCookieCache: Record<string, string> = {};
@@ -39,19 +38,6 @@ function getAppTimeAuthHeaders(credential: JiraCredential): Record<string, strin
   headers["Authorization"] = `Basic ${auth}`;
 
   return headers;
-}
-
-async function proxyFetch(
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  const headers = new Headers(options.headers);
-  headers.set("x-target-url", url);
-
-  return fetch(LOCAL_PROXY_URL, {
-    ...options,
-    headers,
-  });
 }
 
 // Convert DD/MM/YYYY to YYYY-MM-DD format for Tempo API

@@ -3,9 +3,11 @@ import { JiraCredential } from "../types";
 
 interface CredentialModalProps {
   credentials: JiraCredential[];
+  clockifyApiKey: string | null;
   onAdd: (credential: Omit<JiraCredential, "id">) => Promise<void>;
   onUpdate: (credential: JiraCredential) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onSaveClockifyApiKey: (key: string) => Promise<void>;
   onClose: () => void;
   onLock: () => void;
 }
@@ -34,9 +36,11 @@ const emptyForm: CredentialFormData = {
 
 export const CredentialModal: FC<CredentialModalProps> = ({
   credentials,
+  clockifyApiKey,
   onAdd,
   onUpdate,
   onDelete,
+  onSaveClockifyApiKey,
   onClose,
   onLock,
 }) => {
@@ -45,6 +49,21 @@ export const CredentialModal: FC<CredentialModalProps> = ({
   const [formData, setFormData] = useState<CredentialFormData>(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [clockifyKeyInput, setClockifyKeyInput] = useState("");
+  const [savingClockify, setSavingClockify] = useState(false);
+  const [clockifySaved, setClockifySaved] = useState(false);
+
+  const handleSaveClockify = async () => {
+    setSavingClockify(true);
+    setClockifySaved(false);
+    try {
+      await onSaveClockifyApiKey(clockifyKeyInput);
+      setClockifyKeyInput("");
+      setClockifySaved(true);
+    } finally {
+      setSavingClockify(false);
+    }
+  };
 
   const handleAdd = () => {
     setFormData(emptyForm);
@@ -244,6 +263,40 @@ export const CredentialModal: FC<CredentialModalProps> = ({
 
   const renderList = () => (
     <>
+      <div className="mb-4 p-3 bg-gray-800 rounded border border-gray-700">
+        <label className="block text-sm font-medium mb-1">
+          Clockify API Key:
+          {clockifyApiKey && (
+            <span className="ml-2 text-xs text-green-400 font-normal">
+              saved
+            </span>
+          )}
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={clockifyKeyInput}
+            onChange={(e) => {
+              setClockifyKeyInput(e.target.value);
+              setClockifySaved(false);
+            }}
+            className="flex-1 min-w-0 px-3 py-2 bg-gray-900 text-white border border-gray-600 rounded focus:border-white text-sm"
+            placeholder={clockifyApiKey ? "•••••••• (enter to replace)" : "Paste Clockify API key"}
+          />
+          <button
+            onClick={handleSaveClockify}
+            disabled={savingClockify || !clockifyKeyInput.trim()}
+            className="px-3 py-2 text-white border border-white rounded hover:bg-gray-700 cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {savingClockify ? "…" : "Save"}
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          {clockifySaved
+            ? "Clockify API key saved."
+            : "Used to pull time entries. Clockify → Preferences → Advanced → API."}
+        </p>
+      </div>
       {credentials.length === 0 ? (
         <p className="text-gray-400 text-sm mb-4">
           No credentials stored. Add your first Jira credential to get started.

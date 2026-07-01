@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, FC, ChangeEvent } from "react";
+import { useState, useEffect, useCallback, FC, ChangeEvent } from "react";
 import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeEntry, TargetHoursConfig, StoredProjectMapping } from "../types";
 import { parseCSV } from "../utils/csv";
 import { groupAndMerge } from "../utils/data";
+import { fetchClockifyRows } from "../utils/clockify";
 import { exportToCSV } from "../utils/export";
 import { getWorkingDaysInMonth } from "../utils/holidays";
 import { isRoundMode, isRoundInt, isDisplayMode } from "../utils/validators";
@@ -67,6 +68,9 @@ const CsvTablePage: FC = () => {
   const [projects, setProjects] = useState<ProjectData>({});
   const [selectedProject, setSelectedProject] = useState<string>("all");
   const [modal, setModal] = useState<ModalState>({ type: "none" });
+  const [clockifyLoading, setClockifyLoading] = useState(false);
+  const [clockifyError, setClockifyError] = useState<string | null>(null);
+  const [pendingClockifyPull, setPendingClockifyPull] = useState(false);
   const [exportData, setExportData] = useState<
     Record<string, ProjectExportData>
   >({});
@@ -157,6 +161,60 @@ const CsvTablePage: FC = () => {
     };
     reader.readAsText(file);
   };
+
+  // Pull the selected month's time entries from Clockify via the local proxy
+  // and feed them through the same pipeline as an uploaded CSV.
+  const runClockifyPull = useCallback(async () => {
+    if (!credentialState.clockifyApiKey) {
+      // No key stored yet — send the user to the credentials modal to add one.
+      setModal({ type: "credentials" });
+      return;
+    }
+
+    setClockifyLoading(true);
+    setClockifyError(null);
+    try {
+      const rows = await fetchClockifyRows(
+        credentialState.clockifyApiKey,
+        activeConfig.year,
+        activeConfig.month
+      );
+      setCsvRows(rows);
+      setProjects({});
+      if (rows.length === 0) {
+        setClockifyError("No Clockify time entries found for the selected month.");
+      }
+    } catch (err) {
+      setClockifyError(
+        err instanceof Error ? err.message : "Failed to pull from Clockify."
+      );
+    } finally {
+      setClockifyLoading(false);
+    }
+  }, [credentialState.clockifyApiKey, activeConfig.year, activeConfig.month]);
+
+  const handleClockifyPull = () => {
+    if (!credentialState.isInitialized) return;
+    setClockifyError(null);
+
+    if (!credentialState.hasStore) {
+      setPendingClockifyPull(true);
+      setModal({ type: "password", mode: "create" });
+    } else if (!credentialState.isUnlocked) {
+      setPendingClockifyPull(true);
+      setModal({ type: "password", mode: "unlock" });
+    } else {
+      runClockifyPull();
+    }
+  };
+
+  // Once the vault is unlocked, run any pull that was waiting on the password.
+  useEffect(() => {
+    if (pendingClockifyPull && credentialState.isUnlocked) {
+      setPendingClockifyPull(false);
+      runClockifyPull();
+    }
+  }, [pendingClockifyPull, credentialState.isUnlocked, runClockifyPull]);
 
   const openExportModal = () => {
     const projectsToExport =
@@ -274,6 +332,9 @@ const CsvTablePage: FC = () => {
           skipCoeffOnStar={skipCoeffOnStar}
           setSkipCoeffOnStar={setSkipCoeffOnStar}
           onFileChange={handleFile}
+          onClockifyPull={handleClockifyPull}
+          clockifyLoading={clockifyLoading}
+          clockifyError={clockifyError}
         />
 
         <Summary
@@ -319,7 +380,10 @@ const CsvTablePage: FC = () => {
         <PasswordModal
           mode={modal.mode}
           onSubmit={handlePasswordSubmit}
-          onClose={() => setModal({ type: "none" })}
+          onClose={() => {
+            setPendingClockifyPull(false);
+            setModal({ type: "none" });
+          }}
           error={credentialState.error}
         />
       )}
@@ -327,11 +391,13 @@ const CsvTablePage: FC = () => {
       {modal.type === "credentials" && (
         <CredentialModal
           credentials={credentialState.credentials}
+          clockifyApiKey={credentialState.clockifyApiKey}
           onAdd={async (cred) => {
             await credentialActions.addCredential(cred);
           }}
           onUpdate={credentialActions.updateCredential}
           onDelete={credentialActions.deleteCredential}
+          onSaveClockifyApiKey={credentialActions.setClockifyApiKey}
           onClose={() => setModal({ type: "none" })}
           onLock={() => {
             credentialActions.lock();

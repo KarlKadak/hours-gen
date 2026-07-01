@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { JiraCredential, EncryptedCredentialStore } from "../types";
 import {
-  encryptCredentials,
-  decryptCredentials,
+  encryptVault,
+  decryptVault,
   generateCredentialId,
 } from "../utils/crypto";
 
@@ -13,6 +13,7 @@ export interface CredentialStoreState {
   hasStore: boolean;
   isUnlocked: boolean;
   credentials: JiraCredential[];
+  clockifyApiKey: string | null;
   error: string | null;
 }
 
@@ -25,6 +26,7 @@ export interface CredentialStoreActions {
   ) => Promise<JiraCredential>;
   updateCredential: (credential: JiraCredential) => Promise<void>;
   deleteCredential: (id: string) => Promise<void>;
+  setClockifyApiKey: (key: string) => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>;
 }
 
@@ -37,6 +39,7 @@ export function useCredentialStore(): [
     hasStore: false,
     isUnlocked: false,
     credentials: [],
+    clockifyApiKey: null,
     error: null,
   });
 
@@ -51,9 +54,13 @@ export function useCredentialStore(): [
     }));
   }, []);
 
-  const saveCredentials = useCallback(
-    async (credentials: JiraCredential[], password: string) => {
-      const encrypted = await encryptCredentials(credentials, password);
+  const saveVault = useCallback(
+    async (
+      credentials: JiraCredential[],
+      clockifyApiKey: string | undefined,
+      password: string
+    ) => {
+      const encrypted = await encryptVault({ credentials, clockifyApiKey }, password);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(encrypted));
     },
     []
@@ -61,7 +68,7 @@ export function useCredentialStore(): [
 
   const initializeStore = useCallback(async (password: string) => {
     try {
-      const encrypted = await encryptCredentials([], password);
+      const encrypted = await encryptVault({ credentials: [] }, password);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(encrypted));
       setMasterPassword(password);
       setState((prev) => ({
@@ -69,6 +76,7 @@ export function useCredentialStore(): [
         hasStore: true,
         isUnlocked: true,
         credentials: [],
+        clockifyApiKey: null,
         error: null,
       }));
       return true;
@@ -90,7 +98,8 @@ export function useCredentialStore(): [
       }
 
       const encryptedStore: EncryptedCredentialStore = JSON.parse(stored);
-      const credentials = (await decryptCredentials(encryptedStore, password)).map(
+      const vault = await decryptVault(encryptedStore, password);
+      const credentials = vault.credentials.map(
         (c) => ({ ...c, type: c.type || "tempo" }) as JiraCredential
       );
 
@@ -99,6 +108,7 @@ export function useCredentialStore(): [
         ...prev,
         isUnlocked: true,
         credentials,
+        clockifyApiKey: vault.clockifyApiKey ?? null,
         error: null,
       }));
       return true;
@@ -114,6 +124,7 @@ export function useCredentialStore(): [
       ...prev,
       isUnlocked: false,
       credentials: [],
+      clockifyApiKey: null,
       error: null,
     }));
   }, []);
@@ -128,7 +139,7 @@ export function useCredentialStore(): [
       };
 
       const updatedCredentials = [...state.credentials, newCredential];
-      await saveCredentials(updatedCredentials, masterPassword);
+      await saveVault(updatedCredentials, state.clockifyApiKey ?? undefined, masterPassword);
 
       setState((prev) => ({
         ...prev,
@@ -137,7 +148,7 @@ export function useCredentialStore(): [
 
       return newCredential;
     },
-    [masterPassword, state.credentials, saveCredentials]
+    [masterPassword, state.credentials, state.clockifyApiKey, saveVault]
   );
 
   const updateCredential = useCallback(
@@ -147,14 +158,14 @@ export function useCredentialStore(): [
       const updatedCredentials = state.credentials.map((c) =>
         c.id === credential.id ? credential : c
       );
-      await saveCredentials(updatedCredentials, masterPassword);
+      await saveVault(updatedCredentials, state.clockifyApiKey ?? undefined, masterPassword);
 
       setState((prev) => ({
         ...prev,
         credentials: updatedCredentials,
       }));
     },
-    [masterPassword, state.credentials, saveCredentials]
+    [masterPassword, state.credentials, state.clockifyApiKey, saveVault]
   );
 
   const deleteCredential = useCallback(
@@ -162,14 +173,29 @@ export function useCredentialStore(): [
       if (!masterPassword) throw new Error("Store is locked");
 
       const updatedCredentials = state.credentials.filter((c) => c.id !== id);
-      await saveCredentials(updatedCredentials, masterPassword);
+      await saveVault(updatedCredentials, state.clockifyApiKey ?? undefined, masterPassword);
 
       setState((prev) => ({
         ...prev,
         credentials: updatedCredentials,
       }));
     },
-    [masterPassword, state.credentials, saveCredentials]
+    [masterPassword, state.credentials, state.clockifyApiKey, saveVault]
+  );
+
+  const setClockifyApiKey = useCallback(
+    async (key: string) => {
+      if (!masterPassword) throw new Error("Store is locked");
+
+      const trimmed = key.trim();
+      await saveVault(state.credentials, trimmed || undefined, masterPassword);
+
+      setState((prev) => ({
+        ...prev,
+        clockifyApiKey: trimmed || null,
+      }));
+    },
+    [masterPassword, state.credentials, saveVault]
   );
 
   const changePassword = useCallback(
@@ -179,8 +205,8 @@ export function useCredentialStore(): [
         if (!stored) return false;
 
         const encryptedStore: EncryptedCredentialStore = JSON.parse(stored);
-        const credentials = await decryptCredentials(encryptedStore, oldPassword);
-        await saveCredentials(credentials, newPassword);
+        const vault = await decryptVault(encryptedStore, oldPassword);
+        await saveVault(vault.credentials, vault.clockifyApiKey, newPassword);
 
         setMasterPassword(newPassword);
         return true;
@@ -189,7 +215,7 @@ export function useCredentialStore(): [
         return false;
       }
     },
-    [saveCredentials]
+    [saveVault]
   );
 
   return [
@@ -201,6 +227,7 @@ export function useCredentialStore(): [
       addCredential,
       updateCredential,
       deleteCredential,
+      setClockifyApiKey,
       changePassword,
     },
   ];

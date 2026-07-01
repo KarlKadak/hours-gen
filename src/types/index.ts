@@ -69,6 +69,13 @@ export interface EncryptedCredentialStore {
   data: string;
 }
 
+// The full decrypted contents of the master-password vault: Jira credentials
+// plus an optional Clockify API key used to pull time entries.
+export interface VaultData {
+  credentials: JiraCredential[];
+  clockifyApiKey?: string;
+}
+
 export interface JiraExportEntry {
   date: string;
   issueKey: string;

@@ -1,4 +1,4 @@
-import { JiraCredential, EncryptedCredentialStore } from "../types";
+import { JiraCredential, EncryptedCredentialStore, VaultData } from "../types";
 
 const ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
@@ -49,8 +49,8 @@ async function deriveKey(
   );
 }
 
-export async function encryptCredentials(
-  credentials: JiraCredential[],
+export async function encryptVault(
+  vault: VaultData,
   password: string
 ): Promise<EncryptedCredentialStore> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -58,7 +58,7 @@ export async function encryptCredentials(
   const key = await deriveKey(password, salt);
 
   const encoder = new TextEncoder();
-  const data = encoder.encode(JSON.stringify(credentials));
+  const data = encoder.encode(JSON.stringify(vault));
 
   const encrypted = await crypto.subtle.encrypt(
     { name: ALGORITHM, iv },
@@ -73,10 +73,10 @@ export async function encryptCredentials(
   };
 }
 
-export async function decryptCredentials(
+export async function decryptVault(
   store: EncryptedCredentialStore,
   password: string
-): Promise<JiraCredential[]> {
+): Promise<VaultData> {
   const salt = new Uint8Array(base64ToArrayBuffer(store.salt));
   const iv = new Uint8Array(base64ToArrayBuffer(store.iv));
   const data = base64ToArrayBuffer(store.data);
@@ -89,7 +89,13 @@ export async function decryptCredentials(
   );
 
   const decoder = new TextDecoder();
-  return JSON.parse(decoder.decode(decrypted));
+  const parsed = JSON.parse(decoder.decode(decrypted));
+
+  // Backward compatibility: older stores held a bare JiraCredential[] array.
+  if (Array.isArray(parsed)) {
+    return { credentials: parsed as JiraCredential[] };
+  }
+  return parsed as VaultData;
 }
 
 export function generateCredentialId(): string {

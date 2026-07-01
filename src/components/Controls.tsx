@@ -15,6 +15,9 @@ interface ControlsProps {
   skipCoeffOnStar: boolean;
   setSkipCoeffOnStar: (value: boolean) => void;
   onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  onClockifyPull: () => void;
+  clockifyLoading: boolean;
+  clockifyError?: string | null;
 }
 
 export const Controls: FC<ControlsProps> = ({
@@ -29,13 +32,29 @@ export const Controls: FC<ControlsProps> = ({
   skipCoeffOnStar,
   setSkipCoeffOnStar,
   onFileChange,
+  onClockifyPull,
+  clockifyLoading,
+  clockifyError,
 }) => {
   return (
     <div className="flex flex-col gap-2 w-fit">
-      <label>
-        <b>Upload CSV:</b>&nbsp;
-        <input type="file" accept=".csv" onChange={onFileChange} />
-      </label>
+      <div className="flex items-center gap-2">
+        <label>
+          <b>Upload CSV:</b>&nbsp;
+          <input type="file" accept=".csv" onChange={onFileChange} />
+        </label>
+        <button
+          type="button"
+          onClick={onClockifyPull}
+          disabled={clockifyLoading}
+          className="px-2 py-1 text-white border border-white rounded text-sm cursor-pointer hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {clockifyLoading ? "Pulling…" : "Pull from Clockify"}
+        </button>
+      </div>
+      {clockifyError && (
+        <p className="text-red-400 text-sm max-w-xs">{clockifyError}</p>
+      )}
       <label>
         <b>Duration coefficient:</b>
         <input
