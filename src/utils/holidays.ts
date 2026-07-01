@@ -1,17 +1,26 @@
 import { HolidayEntry, TargetHoursConfig } from "../types";
+import { proxyFetch } from "./proxy";
 
-const PROXY_URL = "http://localhost:9876";
 const HOLIDAYS_URL = "https://xn--riigiphad-v9a.ee/et/luhendatud-toopaevad?output=json";
 
 export async function fetchHolidays(): Promise<HolidayEntry[]> {
-  const headers = new Headers();
-  headers.set("x-target-url", HOLIDAYS_URL);
-
-  const response = await fetch(PROXY_URL, { headers });
+  const response = await proxyFetch(HOLIDAYS_URL);
   if (!response.ok) {
-    throw new Error(`Failed to fetch holidays: HTTP ${response.status}`);
+    let message = `Failed to fetch holidays (HTTP ${response.status})`;
+    try {
+      const data = await response.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // Keep default message
+    }
+    throw new Error(message);
   }
-  return response.json();
+
+  try {
+    return await response.json();
+  } catch {
+    throw new Error("Holiday service returned an unexpected response.");
+  }
 }
 
 export function isWeekday(date: Date): boolean {

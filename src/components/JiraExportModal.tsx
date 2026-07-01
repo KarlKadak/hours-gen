@@ -8,6 +8,7 @@ import {
   hasAzureAdProxy,
   getCachedAzureCookies,
   setAzureCookies,
+  ExportWorklogResult,
 } from "../utils/jiraApi";
 
 const CONCURRENCY = 4;
@@ -133,99 +134,118 @@ export const JiraExportModal: FC<JiraExportModalProps> = ({
 
     const repromptForCookies = () => {
       setCurrentMessage("");
-      setIsExporting(false);
       setExportEntries([]);
       setShowCookiePrompt(true);
     };
 
-    // Phase 1: fetch existing worklogs (and issue IDs) up front, in parallel
-    setCurrentMessage("Fetching existing worklogs...");
-    const context = await prepareExportContext(
-      credential,
-      entriesToExport.map((e) => ({ issueKey: e.issueKey, date: e.date }))
-    );
-
-    // Azure AD cookies may have expired during prefetch
-    if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
-      repromptForCookies();
-      return;
-    }
-
-    // Phase 2: export with bounded concurrency
-    setCurrentMessage(`Exporting ${entriesToExport.length} worklogs...`);
-
-    let createdCount = 0;
-    let updatedCount = 0;
-    let skippedCount = 0;
-    let failCount = 0;
-    let authExpired = false;
-    let nextIndex = 0;
-
-    const setRowStatus = (idx: number, patch: Partial<JiraExportEntry>) =>
-      setExportEntries((prev) =>
-        prev.map((e, i) => (i === idx ? { ...e, ...patch } : e))
+    try {
+      // Phase 1: fetch existing worklogs (and issue IDs) up front, in parallel
+      setCurrentMessage("Fetching existing worklogs...");
+      const context = await prepareExportContext(
+        credential,
+        entriesToExport.map((e) => ({ issueKey: e.issueKey, date: e.date }))
       );
 
-    const worker = async () => {
-      while (!abortRef.current && !authExpired) {
-        const i = nextIndex++;
-        if (i >= entriesToExport.length) return;
-
-        const exportEntry = entriesToExport[i];
-        setRowStatus(i, { status: "in_progress" });
-
-        const result = await exportWorklog({
-          credential,
-          issueKey: exportEntry.issueKey,
-          date: exportEntry.date,
-          hours: exportEntry.hours,
-          comment: exportEntry.description,
-          context,
-        });
-
-        if (result.success) {
-          if (result.wasSkipped) {
-            skippedCount++;
-            setRowStatus(i, { status: "skipped" });
-          } else if (result.wasUpdated) {
-            updatedCount++;
-            setRowStatus(i, { status: "updated" });
-          } else {
-            createdCount++;
-            setRowStatus(i, { status: "created" });
-          }
-        } else {
-          failCount++;
-          setRowStatus(i, { status: "error", error: result.error });
-
-          // If Azure AD cookies expired, stop launching new work and re-prompt
-          if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
-            authExpired = true;
-          }
-        }
-
-        setStats({
-          created: createdCount,
-          updated: updatedCount,
-          skipped: skippedCount,
-          fail: failCount,
-          total: entriesToExport.length,
-        });
+      // Azure AD cookies may have expired during prefetch
+      if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
+        repromptForCookies();
+        return;
       }
-    };
 
-    await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, entriesToExport.length) }, worker)
-    );
+      // Phase 2: export with bounded concurrency
+      setCurrentMessage(`Exporting ${entriesToExport.length} worklogs...`);
 
-    // Azure AD session expired mid-export — re-prompt for cookies
-    if (authExpired) {
-      repromptForCookies();
-      return;
+      let createdCount = 0;
+      let updatedCount = 0;
+      let skippedCount = 0;
+      let failCount = 0;
+      let authExpired = false;
+      let nextIndex = 0;
+
+      const setRowStatus = (idx: number, patch: Partial<JiraExportEntry>) =>
+        setExportEntries((prev) =>
+          prev.map((e, i) => (i === idx ? { ...e, ...patch } : e))
+        );
+
+      const worker = async () => {
+        while (!abortRef.current && !authExpired) {
+          const i = nextIndex++;
+          if (i >= entriesToExport.length) return;
+
+          const exportEntry = entriesToExport[i];
+          setRowStatus(i, { status: "in_progress" });
+
+          // exportWorklog is written to resolve (never throw) on network
+          // failure, but guard anyway so one bad entry can't abort the run.
+          let result: ExportWorklogResult;
+          try {
+            result = await exportWorklog({
+              credential,
+              issueKey: exportEntry.issueKey,
+              date: exportEntry.date,
+              hours: exportEntry.hours,
+              comment: exportEntry.description,
+              context,
+            });
+          } catch (err) {
+            result = {
+              success: false,
+              error: err instanceof Error ? err.message : "Unexpected error",
+              issueKey: exportEntry.issueKey,
+            };
+          }
+
+          if (result.success) {
+            if (result.wasSkipped) {
+              skippedCount++;
+              setRowStatus(i, { status: "skipped" });
+            } else if (result.wasUpdated) {
+              updatedCount++;
+              setRowStatus(i, { status: "updated" });
+            } else {
+              createdCount++;
+              setRowStatus(i, { status: "created" });
+            }
+          } else {
+            failCount++;
+            setRowStatus(i, { status: "error", error: result.error });
+
+            // If Azure AD cookies expired, stop launching new work and re-prompt
+            if (hasAzureAdProxy(credential) && !getCachedAzureCookies(credential.id)) {
+              authExpired = true;
+            }
+          }
+
+          setStats({
+            created: createdCount,
+            updated: updatedCount,
+            skipped: skippedCount,
+            fail: failCount,
+            total: entriesToExport.length,
+          });
+        }
+      };
+
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, entriesToExport.length) }, worker)
+      );
+
+      // Azure AD session expired mid-export — re-prompt for cookies
+      if (authExpired) {
+        repromptForCookies();
+        return;
+      }
+
+      setCurrentMessage("");
+    } catch (err) {
+      // Last-resort guard: nothing above should throw, but never leave the
+      // modal stuck in the exporting state if something unexpected does.
+      setCurrentMessage(
+        err instanceof Error ? err.message : "Export failed unexpectedly."
+      );
+    } finally {
+      setIsExporting(false);
     }
-
-    setCurrentMessage("");
-    setIsExporting(false);
   };
 
   const handleExport = async () => {
