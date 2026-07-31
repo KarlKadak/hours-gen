@@ -1,4 +1,5 @@
 import { ProjectExportData, ProjectData } from "../types";
+import { getEntryComment } from "./data";
 
 const stripAnnotations = (text: string): string => {
   return text.replace(/\([^)]*\)\s*/g, "").replace(/\[[^\]]*\]\s*/g, "").trim();
@@ -29,7 +30,9 @@ export const exportToCSV = (
 
       entries.forEach((entry) => {
         const date = entry["Start Date"] || "";
-        const task = truncate(stripAnnotations(entry["Description"] || ""), 40);
+        const base = truncate(stripAnnotations(entry["Description"] || ""), 40);
+        const comment = getEntryComment(entry);
+        const task = comment ? `${base} [${comment}]` : base;
         const hours = entry["Duration (decimal)"] || 0;
 
         csvRows.push(

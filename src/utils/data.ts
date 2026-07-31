@@ -1,5 +1,26 @@
 import { RoundMode, RoundInt, TimeEntry, SubEntry, ProjectData } from "../types";
 import { roundDuration } from "./duration";
+import { extractBracketComment } from "./jiraApi";
+
+// Reconstruct the comment that would be written to a timelog entry for this
+// row: the bracket comments from each sub-entry, taken in start-time order and
+// de-duplicated, joined with "; ". Mirrors JiraExportModal.prepareEntries.
+export const getEntryComment = (entry: TimeEntry): string => {
+  const subs = entry["_subEntries"] as SubEntry[] | undefined;
+  const sources =
+    subs && subs.length > 0
+      ? [...subs]
+          .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""))
+          .map((s) => s.description)
+      : [entry["Description"] as string];
+
+  const parts: string[] = [];
+  for (const source of sources) {
+    const comment = extractBracketComment(source);
+    if (comment && !parts.includes(comment)) parts.push(comment);
+  }
+  return parts.join("; ");
+};
 
 // Parse DD/MM/YYYY date string to Date object
 function parseDDMMYYYY(dateStr: string): Date {
