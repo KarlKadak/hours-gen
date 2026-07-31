@@ -1,5 +1,6 @@
 import { FC, useState, useMemo } from "react";
 import { TargetHoursConfig } from "../types";
+import { Modal } from "./Modal";
 import {
   fetchHolidays,
   filterHolidaysForMonth,
@@ -24,6 +25,14 @@ const DAY_HEADERS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 type DayState = "normal" | "vacation" | "holiday" | "shortened";
 const CYCLE: DayState[] = ["normal", "vacation", "holiday", "shortened"];
+
+const LEGEND: { label: string; className: string }[] = [
+  { label: "Normal", className: "bg-[var(--surface-2)] border border-[var(--border)]" },
+  { label: "Holiday", className: "bg-rose-600" },
+  { label: "Shortened", className: "bg-amber-500" },
+  { label: "Vacation", className: "bg-indigo-500" },
+  { label: "Weekend", className: "bg-[var(--surface)] border border-[var(--border)]" },
+];
 
 export const TargetHoursModal: FC<TargetHoursModalProps> = ({
   config,
@@ -56,12 +65,10 @@ export const TargetHoursModal: FC<TargetHoursModalProps> = ({
       const holidays = await fetchHolidays();
       const result = filterHolidaysForMonth(holidays, config.year, config.month);
       const workingDays = getWorkingDaysInMonth(config.year, config.month);
-      // Merge fetched holidays with existing vacation dates (don't overwrite vacations)
       const newHolidayDates = result.holidayDates;
       const newShortenedDates = result.shortenedDates;
-      // Remove any vacation dates that are now holidays or shortened
       const allSpecial = new Set([...newHolidayDates, ...newShortenedDates]);
-      const cleanedVacation = config.vacationDates.filter(d => !allSpecial.has(d));
+      const cleanedVacation = config.vacationDates.filter((d) => !allSpecial.has(d));
       setConfig({
         ...config,
         workingDays,
@@ -84,17 +91,14 @@ export const TargetHoursModal: FC<TargetHoursModalProps> = ({
     return formatDateISO(now.getFullYear(), now.getMonth() + 1, now.getDate());
   }, []);
 
-  // Build calendar grid for the selected month
   const calendarDays = useMemo(() => {
     const daysInMonth = new Date(config.year, config.month, 0).getDate();
-    // Day of week for the 1st (0=Sun, convert to Mon-based: 0=Mon..6=Sun)
     const firstDow = new Date(config.year, config.month - 1, 1).getDay();
-    const startOffset = firstDow === 0 ? 6 : firstDow - 1; // Monday-based offset
+    const startOffset = firstDow === 0 ? 6 : firstDow - 1;
 
     const cells: (number | null)[] = [];
     for (let i = 0; i < startOffset; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-    // Pad to complete the last week
     while (cells.length % 7 !== 0) cells.push(null);
     return cells;
   }, [config.year, config.month]);
@@ -119,12 +123,10 @@ export const TargetHoursModal: FC<TargetHoursModalProps> = ({
     const nextIdx = (CYCLE.indexOf(current) + 1) % CYCLE.length;
     const next = CYCLE[nextIdx];
 
-    // Remove from all sets
-    const newHolidays = config.holidayDates.filter(d => d !== dateStr);
-    const newShortened = config.shortenedDates.filter(d => d !== dateStr);
-    const newVacation = config.vacationDates.filter(d => d !== dateStr);
+    const newHolidays = config.holidayDates.filter((d) => d !== dateStr);
+    const newShortened = config.shortenedDates.filter((d) => d !== dateStr);
+    const newVacation = config.vacationDates.filter((d) => d !== dateStr);
 
-    // Add to the right set
     if (next === "holiday") newHolidays.push(dateStr);
     else if (next === "shortened") newShortened.push(dateStr);
     else if (next === "vacation") newVacation.push(dateStr);
@@ -148,75 +150,66 @@ export const TargetHoursModal: FC<TargetHoursModalProps> = ({
 
     let bg: string;
     if (weekend) {
-      bg = "bg-gray-700 text-gray-500";
+      bg = "bg-[var(--surface)] text-[var(--text-faint)]";
     } else {
       const state = getDayState(dateStr);
       switch (state) {
-        case "holiday": bg = "bg-red-800 text-white cursor-pointer hover:bg-red-700"; break;
-        case "shortened": bg = "bg-yellow-700 text-white cursor-pointer hover:bg-yellow-600"; break;
-        case "vacation": bg = "bg-blue-700 text-white cursor-pointer hover:bg-blue-600"; break;
-        default: bg = "bg-gray-800 text-gray-300 cursor-pointer hover:bg-gray-700"; break;
+        case "holiday": bg = "bg-rose-600 text-white cursor-pointer hover:bg-rose-500"; break;
+        case "shortened": bg = "bg-amber-500 text-black cursor-pointer hover:bg-amber-400"; break;
+        case "vacation": bg = "bg-indigo-500 text-white cursor-pointer hover:bg-indigo-400"; break;
+        default: bg = "bg-[var(--surface-2)] text-[var(--text-muted)] cursor-pointer hover:bg-[var(--surface-3)]"; break;
       }
     }
 
-    const ring = isToday ? "ring-2 ring-white" : "";
-    return `${bg} ${ring} w-8 h-8 flex items-center justify-center rounded text-xs select-none`;
+    const ring = isToday ? "ring-2 ring-white/80" : "";
+    return `${bg} ${ring} w-9 h-9 flex items-center justify-center rounded-[var(--radius-sm)] text-xs font-medium select-none transition-colors`;
   };
 
   return (
-    <div
-      className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-black text-white p-6 rounded-lg shadow-lg max-w-lg w-full border border-white max-h-[calc(100vh-2rem)] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-lg font-bold mb-4">Target Hours Configuration</h3>
-
-        <div className="space-y-4">
-          <div className="flex gap-2 items-end">
-            <div className="flex-1">
-              <label className="block text-sm font-medium mb-1">Month</label>
-              <select
-                value={config.month}
-                onChange={(e) => update({ month: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white"
-              >
-                {MONTHS.map((name, i) => (
-                  <option key={i} value={i + 1}>{name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="w-24">
-              <label className="block text-sm font-medium mb-1">Year</label>
-              <input
-                type="number"
-                value={config.year}
-                onChange={(e) => update({ year: parseInt(e.target.value) || config.year })}
-                className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white"
-              />
-            </div>
+    <Modal title="Target hours" onClose={onClose} size="lg">
+      <div className="space-y-5">
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <label className="label">Month</label>
+            <select
+              value={config.month}
+              onChange={(e) => update({ month: parseInt(e.target.value) })}
+              className="control w-full"
+            >
+              {MONTHS.map((name, i) => (
+                <option key={i} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
           </div>
+          <div className="w-28">
+            <label className="label">Year</label>
+            <input
+              type="number"
+              value={config.year}
+              onChange={(e) => update({ year: parseInt(e.target.value) || config.year })}
+              className="control w-full"
+            />
+          </div>
+        </div>
 
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Total working days in month
-            </label>
+            <label className="label">Total working days</label>
             <input
               type="number"
               min="0"
               step="1"
               value={config.workingDays}
-              onChange={(e) => setConfig({ ...config, workingDays: parseInt(e.target.value) || 0 })}
-              className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white"
+              onChange={(e) =>
+                setConfig({ ...config, workingDays: parseInt(e.target.value) || 0 })
+              }
+              className="control w-full"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Workload
-            </label>
+            <label className="label">Workload</label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -228,85 +221,74 @@ export const TargetHoursModal: FC<TargetHoursModalProps> = ({
                   const pct = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
                   setConfig({ ...config, workload: pct / 100 });
                 }}
-                className="w-20 px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded focus:border-white"
+                className="control w-20"
               />
-              <span className="text-gray-400">% ({(config.workload * 8).toFixed(1)}h/day)</span>
-            </div>
-          </div>
-
-          {/* Mini Calendar */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Calendar</label>
-            <div className="grid grid-cols-7 gap-1">
-              {DAY_HEADERS.map(d => (
-                <div key={d} className="w-8 h-6 flex items-center justify-center text-xs text-gray-500 font-medium">
-                  {d}
-                </div>
-              ))}
-              {calendarDays.map((day, i) =>
-                day === null ? (
-                  <div key={`empty-${i}`} className="w-8 h-8" />
-                ) : (
-                  <div
-                    key={day}
-                    className={getDayCellClasses(day)}
-                    onClick={() => handleDayClick(day)}
-                  >
-                    {day}
-                  </div>
-                )
-              )}
-            </div>
-
-            {/* Legend */}
-            <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-400">
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-gray-800 inline-block" /> Normal
+              <span className="text-sm text-[var(--text-muted)]">
+                % ({(config.workload * 8).toFixed(1)}h/day)
               </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-red-800 inline-block" /> Holiday
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-yellow-700 inline-block" /> Shortened
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-blue-700 inline-block" /> Vacation
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-gray-700 inline-block" /> Weekend
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Click a weekday to cycle: normal → vacation → holiday → shortened</p>
-          </div>
-
-          <button
-            onClick={handleFetchHolidays}
-            disabled={fetching}
-            className="w-full px-3 py-2 text-white border border-blue-400 rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {fetching ? "Fetching..." : "Fetch holidays for selected month"}
-          </button>
-
-          {fetchError && (
-            <p className="text-red-400 text-sm">{fetchError}</p>
-          )}
-
-          <div className="border-t border-gray-600 pt-4">
-            <div className="text-sm text-gray-400">
-              ({config.workingDays} - {config.holidays} - {config.vacationDays}) &times; {(config.workload * 8).toFixed(1)} - {config.shortenedDays} &times; {(config.workload * 3).toFixed(1)} = <b className="text-white">{targetHours.toFixed(1)}h</b>
             </div>
           </div>
         </div>
 
-        <div className="flex justify-end mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-white border border-white rounded hover:bg-gray-800 cursor-pointer"
-          >
-            Close
-          </button>
+        {/* Calendar */}
+        <div>
+          <label className="label">Calendar</label>
+          <div className="grid grid-cols-7 justify-items-center gap-1">
+            {DAY_HEADERS.map((d) => (
+              <div
+                key={d}
+                className="flex h-6 w-9 items-center justify-center text-xs font-medium text-[var(--text-faint)]"
+              >
+                {d}
+              </div>
+            ))}
+            {calendarDays.map((day, i) =>
+              day === null ? (
+                <div key={`empty-${i}`} className="h-9 w-9" />
+              ) : (
+                <div
+                  key={day}
+                  className={getDayCellClasses(day)}
+                  onClick={() => handleDayClick(day)}
+                >
+                  {day}
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-[var(--text-muted)]">
+            {LEGEND.map((item) => (
+              <span key={item.label} className="flex items-center gap-1.5">
+                <span className={`inline-block h-3 w-3 rounded ${item.className}`} />
+                {item.label}
+              </span>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+            Click a weekday to cycle: normal → vacation → holiday → shortened
+          </p>
+        </div>
+
+        <button
+          onClick={handleFetchHolidays}
+          disabled={fetching}
+          className="btn btn-secondary w-full"
+        >
+          {fetching ? "Fetching…" : "Fetch holidays for selected month"}
+        </button>
+
+        {fetchError && <p className="text-sm text-[var(--danger)]">{fetchError}</p>}
+
+        <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] p-3 text-sm text-[var(--text-muted)]">
+          <span className="num">
+            ({config.workingDays} − {config.holidays} − {config.vacationDays}) ×{" "}
+            {(config.workload * 8).toFixed(1)} − {config.shortenedDays} ×{" "}
+            {(config.workload * 3).toFixed(1)}
+          </span>{" "}
+          = <b className="num text-[var(--text)]">{targetHours.toFixed(1)}h</b>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };

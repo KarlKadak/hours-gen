@@ -24,39 +24,46 @@ export const ProjectTable: FC<ProjectTableProps> = ({
   );
 
   return (
-    <section>
-      <h2 className="text-xl font-bold">{project}</h2>
-      <div className="mb-2 text-gray-600 text-sm">
-        Total hours:&nbsp;
-        {formatDuration(projectTotal, displayMode)}
+    <section className="card">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold">{project}</h2>
+        <span className="badge badge-muted num">
+          {formatDuration(projectTotal, displayMode)} h
+        </span>
       </div>
-      <table border={1} cellPadding={6} className="w-full">
-        <thead>
-          <tr>
-            <th>Task</th>
-            <th>Comment</th>
-            <th>Date</th>
-            <th>Duration</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => {
-            const comment = getEntryComment(row);
-            return (
-              <tr key={i}>
-                <td>{stripAnnotations(row["Description"] as string)}</td>
-                <td className="text-gray-600 italic">
-                  {comment || <span className="text-gray-400 not-italic">—</span>}
-                </td>
-                <td className="text-center">{row["Start Date"]}</td>
-                <td className="text-center">
-                  {formatDuration(row["Duration (decimal)"], displayMode)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <div className="overflow-x-auto">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Comment</th>
+              <th>Date</th>
+              <th className="text-right">Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => {
+              const comment = getEntryComment(row);
+              return (
+                <tr key={i}>
+                  <td>{stripAnnotations(row["Description"] as string)}</td>
+                  <td className="italic text-[var(--text-muted)]">
+                    {comment || (
+                      <span className="not-italic text-[var(--text-faint)]">—</span>
+                    )}
+                  </td>
+                  <td className="num whitespace-nowrap text-[var(--text-muted)]">
+                    {row["Start Date"]}
+                  </td>
+                  <td className="num text-right">
+                    {formatDuration(row["Duration (decimal)"], displayMode)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 };

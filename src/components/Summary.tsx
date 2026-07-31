@@ -1,12 +1,11 @@
 import { FC } from "react";
-import { RoundMode, TargetHoursConfig, ProjectData } from "../types";
+import { TargetHoursConfig, ProjectData, DisplayMode } from "../types";
 import { formatDuration } from "../utils/duration";
 import { calculateTargetHours, getDayTargetHours, formatDateISO } from "../utils/holidays";
 
 interface SummaryProps {
   totalHours: number;
-  roundMode: RoundMode;
-  displayMode: "decimal" | "hhmm";
+  displayMode: DisplayMode;
   targetConfig: TargetHoursConfig;
   projects: ProjectData;
   selectedProject: string;
@@ -40,9 +39,44 @@ function getRollingTargetHours(config: TargetHoursConfig): number {
   return expectedHours;
 }
 
+interface ProgressRowProps {
+  label: string;
+  value: number;
+  target: number;
+  displayMode: DisplayMode;
+  behindTone?: boolean;
+}
+
+const ProgressRow: FC<ProgressRowProps> = ({ label, value, target, displayMode, behindTone }) => {
+  const pct = target > 0 ? (value / target) * 100 : 0;
+  const done = pct >= 99.95;
+  const color = done
+    ? "var(--success)"
+    : behindTone
+    ? "var(--warning)"
+    : "var(--accent)";
+
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between text-sm">
+        <span className="text-[var(--text-muted)]">{label}</span>
+        <span className="num">
+          {formatDuration(value, displayMode)} / {formatDuration(target, displayMode)}
+          <span className="ml-1.5 text-[var(--text-faint)]">{pct.toFixed(0)}%</span>
+        </span>
+      </div>
+      <div className="progress-track">
+        <div
+          className="progress-fill"
+          style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: color }}
+        />
+      </div>
+    </div>
+  );
+};
+
 export const Summary: FC<SummaryProps> = ({
   totalHours,
-  roundMode,
   displayMode,
   targetConfig,
   projects,
@@ -61,48 +95,55 @@ export const Summary: FC<SummaryProps> = ({
   );
 
   const rollingTarget = getRollingTargetHours(targetConfig);
-  const completionPct = targetHours > 0 ? (totalHours / targetHours) * 100 : 0;
-  const rollingPct = rollingTarget > 0 ? (totalHours / rollingTarget) * 100 : 0;
+  const hasProjects = Object.keys(projects).length > 0;
 
   return (
-    <div className="flex flex-col gap-2 w-fit">
-      <div>
-        <b>Total hours{roundMode !== "keep" && " (after rounding)"}:</b>
-        <span className="ml-2">{formatDuration(totalHours, displayMode)}</span>
-      </div>
-      <div>
-        <b>Target hours:</b>
-        <span className="ml-2">{targetHours.toFixed(1)}h</span>
-        <button
-          onClick={onConfigureTarget}
-          className="ml-2 px-2 py-0.5 text-xs text-white border border-gray-600 rounded cursor-pointer hover:bg-gray-800"
-        >
+    <div className="card flex flex-col">
+      <div className="flex items-center justify-between">
+        <div className="card-title mb-0">Target</div>
+        <button className="btn btn-ghost btn-sm" onClick={onConfigureTarget}>
           Configure
         </button>
       </div>
+
+      <div className="mt-3 flex items-baseline gap-2">
+        <span className="num text-3xl font-semibold">{targetHours.toFixed(1)}h</span>
+        <span className="text-sm text-[var(--text-muted)]">
+          for this month
+        </span>
+      </div>
+
       {targetHours > 0 && (
-        <>
-          <div>
-            <b>Completion:</b>
-            <span className="ml-2">
-              {formatDuration(totalHours, displayMode)} / {formatDuration(targetHours, displayMode)} ({completionPct.toFixed(1)}%)
-            </span>
-          </div>
-          <div>
-            <b>Rolling completion:</b>
-            <span className="ml-2">
-              {formatDuration(totalHours, displayMode)} / {formatDuration(rollingTarget, displayMode)} ({rollingPct.toFixed(1)}%)
-            </span>
-          </div>
-        </>
+        <div className="mt-4 space-y-3">
+          <ProgressRow
+            label="Completion"
+            value={totalHours}
+            target={targetHours}
+            displayMode={displayMode}
+          />
+          <ProgressRow
+            label="On track (to date)"
+            value={totalHours}
+            target={rollingTarget}
+            displayMode={displayMode}
+            behindTone
+          />
+        </div>
       )}
-      <div>
-        <label>
-          <b>Export project:</b>
+
+      <hr className="divider my-5" />
+
+      <div className="card-title">Export</div>
+      <div className="flex flex-col gap-3">
+        <div>
+          <label className="label" htmlFor="exportProject">
+            Project
+          </label>
           <select
+            id="exportProject"
             value={selectedProject}
             onChange={(e) => setSelectedProject(e.target.value)}
-            className="ml-2"
+            className="control w-full"
           >
             <option value="all">All projects</option>
             {Object.keys(projects).map((projectName) => (
@@ -111,24 +152,28 @@ export const Summary: FC<SummaryProps> = ({
               </option>
             ))}
           </select>
-        </label>
-      </div>
-      <div className="flex gap-2">
-        <button
-          onClick={onExportClick}
-          disabled={Object.keys(projects).length === 0}
-          className="px-3 py-1 text-white border border-white rounded text-sm cursor-pointer disabled:bg-gray-600 disabled:cursor-not-allowed disabled:border-gray-400"
-        >
-          Export to CSV
-        </button>
-        <button
-          onClick={onJiraExportClick}
-          disabled={Object.keys(projects).length === 0 || selectedProject === "all"}
-          className="px-3 py-1 text-white border border-blue-400 rounded text-sm cursor-pointer disabled:bg-gray-600 disabled:cursor-not-allowed disabled:border-gray-400"
-          title={selectedProject === "all" ? "Select a single project to export to Jira" : undefined}
-        >
-          Export to Jira
-        </button>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={onExportClick}
+            disabled={!hasProjects}
+            className="btn btn-secondary flex-1"
+          >
+            Export to CSV
+          </button>
+          <button
+            onClick={onJiraExportClick}
+            disabled={!hasProjects || selectedProject === "all"}
+            className="btn btn-primary flex-1"
+            title={
+              selectedProject === "all"
+                ? "Select a single project to export to Jira"
+                : undefined
+            }
+          >
+            Export to Jira
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeE
 import { parseCSV } from "../utils/csv";
 import { groupAndMerge } from "../utils/data";
 import { fetchClockifyRows } from "../utils/clockify";
+import { formatDuration } from "../utils/duration";
 import { exportToCSV } from "../utils/export";
 import { getWorkingDaysInMonth } from "../utils/holidays";
 import { isRoundMode, isRoundInt, isDisplayMode } from "../utils/validators";
@@ -317,9 +318,34 @@ const CsvTablePage: FC = () => {
     return selectedProject;
   };
 
+  const monthLabel = new Date(activeConfig.year, activeConfig.month - 1, 1)
+    .toLocaleString("en-US", { month: "long" });
+  const hasData = Object.keys(projects).length > 0;
+
   return (
-    <main className="max-w-[1000px] mx-auto my-[2rem]">
-      <div className="flex flex-row justify-between">
+    <main className="mx-auto max-w-[1080px] px-4 py-8 sm:py-10">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Working Hours Report
+          </h1>
+          <p className="mt-0.5 text-sm text-[var(--text-muted)]">
+            {monthLabel} {activeConfig.year}
+          </p>
+        </div>
+        {hasData && (
+          <div className="text-right">
+            <div className="num text-3xl font-semibold leading-none">
+              {formatDuration(totalHours, displayMode)}
+            </div>
+            <div className="mt-1 text-xs uppercase tracking-wide text-[var(--text-faint)]">
+              total logged{roundMode !== "keep" && " · rounded"}
+            </div>
+          </div>
+        )}
+      </header>
+
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         <Controls
           coeff={coeff}
           setCoeff={setCoeff}
@@ -339,7 +365,6 @@ const CsvTablePage: FC = () => {
 
         <Summary
           totalHours={totalHours}
-          roundMode={roundMode}
           displayMode={displayMode}
           targetConfig={targetConfig}
           projects={projects}
@@ -351,21 +376,33 @@ const CsvTablePage: FC = () => {
         />
       </div>
 
-      <hr className="my-4" />
-
-      {Object.keys(projects).length === 0 && <p>No data loaded.</p>}
-      {Object.entries(projects).map(([project, rows], index) => (
-        <div key={project}>
-          <ProjectTable
-            project={project}
-            rows={rows}
-            displayMode={displayMode}
-          />
-          {index < Object.entries(projects).length - 1 && (
-            <hr className="my-4" />
-          )}
-        </div>
-      ))}
+      <div className="mt-8 space-y-4">
+        {!hasData ? (
+          <div className="flex flex-col items-center justify-center rounded-[var(--radius)] border border-dashed border-[var(--border)] px-6 py-16 text-center">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="8" y1="13" x2="16" y2="13" />
+              <line x1="8" y1="17" x2="16" y2="17" />
+            </svg>
+            <p className="mt-3 text-sm text-[var(--text-muted)]">
+              No time entries loaded yet.
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-faint)]">
+              Upload a Clockify CSV or pull directly from Clockify to get started.
+            </p>
+          </div>
+        ) : (
+          Object.entries(projects).map(([project, rows]) => (
+            <ProjectTable
+              key={project}
+              project={project}
+              rows={rows}
+              displayMode={displayMode}
+            />
+          ))
+        )}
+      </div>
 
       {modal.type === "csvExport" && (
         <ExportModal

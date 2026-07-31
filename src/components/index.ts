@@ -1,3 +1,4 @@
+export { Modal } from "./Modal";
 export { Controls } from "./Controls";
 export { Summary } from "./Summary";
 export { ProjectTable } from "./ProjectTable";
