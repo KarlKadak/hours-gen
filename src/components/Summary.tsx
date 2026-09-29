@@ -1,4 +1,4 @@
-import { FC } from "react";
+import { FC, MouseEvent, useState } from "react";
 import { TargetHoursConfig, ProjectData, DisplayMode } from "../types";
 import { formatDuration } from "../utils/duration";
 import { calculateTargetHours, getDayTargetHours, formatDateISO } from "../utils/holidays";
@@ -56,6 +56,25 @@ const ProgressRow: FC<ProgressRowProps> = ({ label, value, target, displayMode, 
     ? "var(--warning)"
     : "var(--accent)";
 
+  // Hovered position along the bar, snapped to whole percents. Null when not hovering.
+  const [hoverPct, setHoverPct] = useState<number | null>(null);
+
+  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const ratio = (e.clientX - rect.left) / rect.width;
+    setHoverPct(Math.min(100, Math.max(0, Math.round(ratio * 100))));
+  };
+
+  const hoverHours = hoverPct !== null ? (target * hoverPct) / 100 : null;
+  const remaining = hoverHours !== null ? hoverHours - value : null;
+  const fmt = (h: number) =>
+    displayMode === "decimal" ? `${formatDuration(h, displayMode)}h` : formatDuration(h, displayMode);
+
+  // Keep the label inside the bar near the edges instead of centering it on the line.
+  const labelAlign =
+    hoverPct === null ? "center" : hoverPct < 12 ? "start" : hoverPct > 88 ? "end" : "center";
+
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between text-sm">
@@ -65,11 +84,35 @@ const ProgressRow: FC<ProgressRowProps> = ({ label, value, target, displayMode, 
           <span className="ml-1.5 text-[var(--text-faint)]">{pct.toFixed(0)}%</span>
         </span>
       </div>
-      <div className="progress-track">
-        <div
-          className="progress-fill"
-          style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: color }}
-        />
+      <div
+        className="progress-hover"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverPct(null)}
+      >
+        <div className="progress-track">
+          <div
+            className="progress-fill"
+            style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: color }}
+          />
+        </div>
+        {hoverPct !== null && (
+          <div className="progress-marker" style={{ left: `${hoverPct}%` }} />
+        )}
+      </div>
+      <div className="progress-hint num">
+        {hoverPct !== null && hoverHours !== null && remaining !== null && (
+          <span
+            className={`progress-hint-label progress-hint-${labelAlign}`}
+            style={{ left: `${hoverPct}%` }}
+          >
+            <span className="text-[var(--text)]">{hoverPct}%</span>
+            {" = "}
+            {fmt(hoverHours)}
+            <span className="ml-1.5 text-[var(--text-faint)]">
+              {remaining >= 0 ? `${fmt(remaining)} to go` : `${fmt(-remaining)} over`}
+            </span>
+          </span>
+        )}
       </div>
     </div>
   );

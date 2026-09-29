@@ -316,3 +316,37 @@ input[type="radio"] {
   border-radius: 999px;
   transition: width 0.3s ease;
 }
+/* Wrapper that gives the thin track a taller hover area and hosts the marker. */
+.progress-hover {
+  position: relative;
+  padding: 6px 0;
+  margin: -6px 0;
+  cursor: crosshair;
+}
+.progress-marker {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: var(--text);
+  pointer-events: none;
+}
+/* Fixed-height line under the track so the hint never shifts the layout. */
+.progress-hint {
+  position: relative;
+  height: 1.1rem;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.progress-hint-label {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+}
+.progress-hint-center { transform: translateX(-50%); }
+.progress-hint-start { transform: translateX(0); }
+.progress-hint-end { transform: translateX(-100%); }
