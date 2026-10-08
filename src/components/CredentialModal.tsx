@@ -1,5 +1,5 @@
 import { FC, useState, FormEvent } from "react";
-import { JiraCredential } from "../types";
+import { JiraAuthMode, JiraCredential, JiraHosting } from "../types";
 import { Modal } from "./Modal";
 
 interface CredentialModalProps {
@@ -16,8 +16,11 @@ interface CredentialModalProps {
 interface CredentialFormData {
   name: string;
   type: "tempo" | "apptime";
+  hosting: JiraHosting;
+  authMode: JiraAuthMode;
   jiraDomain: string;
   jiraEmail: string;
+  jiraUsername: string;
   jiraApiToken: string;
   tempoApiToken: string;
   atlassianAccountId: string;
@@ -27,8 +30,11 @@ interface CredentialFormData {
 const emptyForm: CredentialFormData = {
   name: "",
   type: "tempo",
+  hosting: "cloud",
+  authMode: "basic",
   jiraDomain: "",
   jiraEmail: "",
+  jiraUsername: "",
   jiraApiToken: "",
   tempoApiToken: "",
   atlassianAccountId: "",
@@ -76,8 +82,11 @@ export const CredentialModal: FC<CredentialModalProps> = ({
     setFormData({
       name: credential.name,
       type: credential.type,
+      hosting: credential.hosting || (credential.azureAdProxy ? "server" : "cloud"),
+      authMode: credential.authMode || "basic",
       jiraDomain: credential.jiraDomain,
       jiraEmail: credential.jiraEmail,
+      jiraUsername: credential.jiraUsername || "",
       jiraApiToken: credential.jiraApiToken,
       tempoApiToken: credential.tempoApiToken,
       atlassianAccountId: credential.atlassianAccountId,
@@ -86,15 +95,30 @@ export const CredentialModal: FC<CredentialModalProps> = ({
     setView("edit");
   };
 
+  // Drop fields that do not apply to the chosen hosting so stale values from
+  // a previous selection are not persisted.
+  const toCredential = (data: CredentialFormData): Omit<JiraCredential, "id"> => {
+    const isServer = data.hosting === "server";
+    return {
+      ...data,
+      jiraUsername:
+        isServer && data.authMode === "basic" && data.jiraUsername.trim()
+          ? data.jiraUsername.trim()
+          : undefined,
+      atlassianAccountId: isServer ? "" : data.atlassianAccountId,
+      azureAdProxy: isServer ? data.azureAdProxy : false,
+    };
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
       if (view === "add") {
-        await onAdd(formData);
+        await onAdd(toCredential(formData));
       } else if (view === "edit" && editingId) {
-        await onUpdate({ ...formData, id: editingId });
+        await onUpdate({ ...toCredential(formData), id: editingId });
       }
       setView("list");
       setFormData(emptyForm);
@@ -118,6 +142,8 @@ export const CredentialModal: FC<CredentialModalProps> = ({
     setFormData(emptyForm);
     setEditingId(null);
   };
+
+  const isServer = formData.type === "apptime" && formData.hosting === "server";
 
   const renderForm = () => (
     <form onSubmit={handleSubmit} className="space-y-3">
@@ -149,7 +175,14 @@ export const CredentialModal: FC<CredentialModalProps> = ({
                   setFormData({
                     ...formData,
                     type: t,
-                    ...(t === "apptime" ? { tempoApiToken: "" } : {}),
+                    // Tempo mode only talks to Tempo Cloud, so force cloud hosting
+                    ...(t === "tempo"
+                      ? {
+                          hosting: "cloud" as const,
+                          authMode: "basic" as const,
+                          azureAdProxy: false,
+                        }
+                      : { tempoApiToken: "" }),
                   })
                 }
               />
@@ -157,7 +190,47 @@ export const CredentialModal: FC<CredentialModalProps> = ({
             </label>
           ))}
         </div>
+        {formData.type === "apptime" && (
+          <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+            AppTime mode writes native Jira worklogs. Any tool that reads them,
+            including AppTime and Tempo Server, picks them up.
+          </p>
+        )}
       </div>
+      {formData.type === "apptime" && (
+        <div>
+          <label className="label">Jira hosting</label>
+          <div className="flex gap-3">
+            {(["cloud", "server"] as const).map((h) => (
+              <label
+                key={h}
+                className="flex flex-1 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm"
+              >
+                <input
+                  type="radio"
+                  name="jiraHosting"
+                  value={h}
+                  checked={formData.hosting === h}
+                  onChange={() =>
+                    setFormData({
+                      ...formData,
+                      hosting: h,
+                      ...(h === "cloud"
+                        ? {
+                            authMode: "basic" as const,
+                            azureAdProxy: false,
+                            jiraUsername: "",
+                          }
+                        : {}),
+                    })
+                  }
+                />
+                {h === "cloud" ? "Cloud" : "Server / Data Center"}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
         <label className="label">Jira domain</label>
         <input
@@ -165,10 +238,38 @@ export const CredentialModal: FC<CredentialModalProps> = ({
           value={formData.jiraDomain}
           onChange={(e) => setFormData({ ...formData, jiraDomain: e.target.value })}
           className="control w-full"
-          placeholder="e.g., company.atlassian.net"
+          placeholder={isServer ? "e.g., jira.company.com" : "e.g., company.atlassian.net"}
           required
         />
       </div>
+      {isServer && (
+        <div>
+          <label className="label">Authentication</label>
+          <div className="flex gap-3">
+            {(["basic", "pat"] as const).map((m) => (
+              <label
+                key={m}
+                className="flex flex-1 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm"
+              >
+                <input
+                  type="radio"
+                  name="jiraAuthMode"
+                  value={m}
+                  checked={formData.authMode === m}
+                  onChange={() =>
+                    setFormData({
+                      ...formData,
+                      authMode: m,
+                      ...(m === "pat" ? { jiraUsername: "" } : {}),
+                    })
+                  }
+                />
+                {m === "basic" ? "Username and password" : "Personal access token"}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
         <label className="label">Jira email</label>
         <input
@@ -179,9 +280,35 @@ export const CredentialModal: FC<CredentialModalProps> = ({
           placeholder="your@email.com"
           required
         />
+        {isServer && (
+          <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+            Must match the email on your Jira profile. It is used to find your
+            existing worklogs so re-exports update instead of duplicating.
+          </p>
+        )}
       </div>
+      {isServer && formData.authMode === "basic" && (
+        <div>
+          <label className="label">Jira username</label>
+          <input
+            type="text"
+            value={formData.jiraUsername}
+            onChange={(e) =>
+              setFormData({ ...formData, jiraUsername: e.target.value })
+            }
+            className="control w-full"
+            placeholder="Leave empty to sign in with the email above"
+          />
+        </div>
+      )}
       <div>
-        <label className="label">Jira API token</label>
+        <label className="label">
+          {!isServer
+            ? "Jira API token"
+            : formData.authMode === "pat"
+            ? "Personal access token"
+            : "Jira password"}
+        </label>
         <input
           type="password"
           value={formData.jiraApiToken}
@@ -189,7 +316,13 @@ export const CredentialModal: FC<CredentialModalProps> = ({
             setFormData({ ...formData, jiraApiToken: e.target.value })
           }
           className="control w-full"
-          placeholder="Create at id.atlassian.com"
+          placeholder={
+            !isServer
+              ? "Create at id.atlassian.com"
+              : formData.authMode === "pat"
+              ? "Jira profile → Personal Access Tokens"
+              : "Your Jira login password"
+          }
           required
         />
       </div>
@@ -208,7 +341,7 @@ export const CredentialModal: FC<CredentialModalProps> = ({
           />
         </div>
       )}
-      {formData.type === "apptime" && (
+      {isServer && (
         <label className="flex cursor-pointer items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -220,19 +353,21 @@ export const CredentialModal: FC<CredentialModalProps> = ({
           Jira behind Azure AD App Proxy
         </label>
       )}
-      <div>
-        <label className="label">Atlassian account ID</label>
-        <input
-          type="text"
-          value={formData.atlassianAccountId}
-          onChange={(e) =>
-            setFormData({ ...formData, atlassianAccountId: e.target.value })
-          }
-          className="control w-full"
-          placeholder="From your Jira profile URL"
-          required
-        />
-      </div>
+      {!isServer && (
+        <div>
+          <label className="label">Atlassian account ID</label>
+          <input
+            type="text"
+            value={formData.atlassianAccountId}
+            onChange={(e) =>
+              setFormData({ ...formData, atlassianAccountId: e.target.value })
+            }
+            className="control w-full"
+            placeholder="From your Jira profile URL"
+            required
+          />
+        </div>
+      )}
       <div className="flex justify-end gap-2 pt-2">
         <button
           type="button"
@@ -303,6 +438,9 @@ export const CredentialModal: FC<CredentialModalProps> = ({
                     {cred.name}
                     <span className="badge badge-muted">
                       {cred.type === "apptime" ? "AppTime" : "Tempo"}
+                      {cred.type === "apptime" && cred.hosting === "server"
+                        ? " · Server"
+                        : ""}
                     </span>
                   </p>
                   <p className="truncate text-sm text-[var(--text-muted)]">

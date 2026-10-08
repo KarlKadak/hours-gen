@@ -20,6 +20,21 @@ function clearAzureCookies(credentialId: string): void {
   delete azureCookieCache[credentialId];
 }
 
+// Self-hosted Jira (Server / Data Center). An Azure AD App Proxy setup is
+// always self-hosted, so that flag implies server mode for older credentials
+// saved before the hosting field existed.
+export function isJiraServer(credential: JiraCredential): boolean {
+  return credential.hosting === "server" || !!credential.azureAdProxy;
+}
+
+function jiraAuthorizationHeader(credential: JiraCredential): string {
+  if (credential.authMode === "pat") {
+    return `Bearer ${credential.jiraApiToken}`;
+  }
+  const username = credential.jiraUsername?.trim() || credential.jiraEmail;
+  return `Basic ${btoa(`${username}:${credential.jiraApiToken}`)}`;
+}
+
 function getAppTimeAuthHeaders(credential: JiraCredential): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -33,9 +48,9 @@ function getAppTimeAuthHeaders(credential: JiraCredential): Record<string, strin
     }
   }
 
-  // Always include Basic auth - Azure AD App Proxy passes it to the backend
-  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
-  headers["Authorization"] = `Basic ${auth}`;
+  // Always include the Jira auth header. Azure AD App Proxy passes it on to
+  // the backend once the proxy's own cookie check has succeeded.
+  headers["Authorization"] = jiraAuthorizationHeader(credential);
 
   return headers;
 }
@@ -87,14 +102,12 @@ export async function getJiraIssueId(
   credential: JiraCredential,
   issueKey: string
 ): Promise<number | null> {
-  const auth = btoa(`${credential.jiraEmail}:${credential.jiraApiToken}`);
-
   const response = await proxyFetch(
-    `https://${credential.jiraDomain}/rest/api/3/issue/${issueKey}?fields=id`,
+    `https://${credential.jiraDomain}/rest/api/${jiraApiVersion(credential)}/issue/${issueKey}?fields=id`,
     {
       method: "GET",
       headers: {
-        Authorization: `Basic ${auth}`,
+        Authorization: jiraAuthorizationHeader(credential),
         Accept: "application/json",
       },
     }
@@ -294,8 +307,32 @@ async function applyTempoWorklog(
 
 // --- AppTime (native Jira worklog) functions ---
 
+// Jira Server / Data Center only ships the v2 REST API.
 function jiraApiVersion(credential: JiraCredential): string {
-  return credential.azureAdProxy ? "2" : "3";
+  return isJiraServer(credential) ? "2" : "3";
+}
+
+// Shared handling for a non-JSON reply from a server-mode worklog write. With
+// an Azure AD proxy it means the session cookie expired; otherwise it is
+// usually an SSO login page or a reverse proxy error, and treating it as
+// success would be wrong.
+function nonJsonWriteError(
+  credential: JiraCredential,
+  response: Response
+): CreateWorklogResult | null {
+  const ct = response.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return null;
+  if (credential.azureAdProxy) {
+    clearAzureCookies(credential.id);
+    return { success: false, error: "Azure AD session expired — re-export to re-authenticate" };
+  }
+  if (isJiraServer(credential)) {
+    return {
+      success: false,
+      error: `Unexpected non-JSON response (HTTP ${response.status}), check Jira auth`,
+    };
+  }
+  return null;
 }
 
 async function getExistingJiraWorklogs(
@@ -328,11 +365,22 @@ async function getExistingJiraWorklogs(
   const worklogs: JiraWorklog[] = data.worklogs || [];
 
   // Filter by author only; date filtering happens at export-decision time.
-  // v2 (Jira Server) uses author.emailAddress, v3 (Jira Cloud) uses author.accountId
-  return worklogs.filter((w) =>
-    credential.azureAdProxy
-      ? w.author.emailAddress === credential.jiraEmail
-      : w.author.accountId === credential.atlassianAccountId
+  // v2 (Jira Server) has no account IDs, so match on email address (case
+  // insensitive, Jira may report it differently from how it was typed). The
+  // instance's email visibility setting can hide author emails entirely, so
+  // also accept a username match when one is configured.
+  // v3 (Jira Cloud) uses author.accountId.
+  if (isJiraServer(credential)) {
+    const email = credential.jiraEmail.trim().toLowerCase();
+    const username = credential.jiraUsername?.trim().toLowerCase();
+    return worklogs.filter((w) => {
+      const authorEmail = (w.author.emailAddress ?? "").trim().toLowerCase();
+      const authorName = (w.author.name ?? "").trim().toLowerCase();
+      return authorEmail === email || (!!username && authorName === username);
+    });
+  }
+  return worklogs.filter(
+    (w) => w.author.accountId === credential.atlassianAccountId
   );
 }
 
@@ -357,7 +405,7 @@ function makeAdfComment(text: string): object {
 }
 
 function makeWorklogComment(credential: JiraCredential, text: string): unknown {
-  if (credential.azureAdProxy) {
+  if (isJiraServer(credential)) {
     // v2: plain string
     return text;
   }
@@ -419,11 +467,8 @@ async function applyJiraWorklog(
     }
   );
 
-  const ct = response.headers.get("content-type") || "";
-  if (credential.azureAdProxy && !ct.includes("application/json")) {
-    clearAzureCookies(credential.id);
-    return { success: false, error: "Azure AD session expired — re-export to re-authenticate" };
-  }
+  const nonJson = nonJsonWriteError(credential, response);
+  if (nonJson) return nonJson;
 
   if (response.ok) {
     return { success: true, wasUpdated: false };
@@ -488,11 +533,8 @@ async function updateJiraWorklog(
     }
   );
 
-  const ct = response.headers.get("content-type") || "";
-  if (credential.azureAdProxy && !ct.includes("application/json")) {
-    clearAzureCookies(credential.id);
-    return { success: false, error: "Azure AD session expired — re-export to re-authenticate" };
-  }
+  const nonJson = nonJsonWriteError(credential, response);
+  if (nonJson) return nonJson;
 
   if (response.ok) {
     return { success: true, wasUpdated: true };

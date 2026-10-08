@@ -51,14 +51,29 @@ export interface TimeEntry {
 
 export type ProjectData = Record<string, TimeEntry[]>;
 
+// "cloud" is Atlassian-hosted Jira (v3 API, account IDs, ADF comments).
+// "server" is self-hosted Jira Server / Data Center (v2 API, plain-string
+// comments, authors matched by email). Missing means cloud.
+export type JiraHosting = "cloud" | "server";
+
+// How the Jira API token field is sent. "basic" puts it in a Basic auth
+// header as the password. "pat" sends it as a Bearer token, which is what
+// Jira Server / Data Center personal access tokens require.
+export type JiraAuthMode = "basic" | "pat";
+
 export interface JiraCredential {
   id: string;
   name: string;
   type: "tempo" | "apptime";
+  hosting?: JiraHosting;
+  authMode?: JiraAuthMode;
   jiraDomain: string;
   jiraEmail: string;
+  // Basic auth username when it differs from the email (Server / DC only).
+  jiraUsername?: string;
   jiraApiToken: string;
   tempoApiToken: string;
+  // Required for cloud, unused for server.
   atlassianAccountId: string;
   azureAdProxy?: boolean;
 }

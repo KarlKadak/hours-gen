@@ -99,8 +99,16 @@ export function useCredentialStore(): [
 
       const encryptedStore: EncryptedCredentialStore = JSON.parse(stored);
       const vault = await decryptVault(encryptedStore, password);
+      // Fill defaults for credentials saved before these fields existed. An
+      // Azure AD proxy setup is always self-hosted, so it implies server mode.
       const credentials = vault.credentials.map(
-        (c) => ({ ...c, type: c.type || "tempo" }) as JiraCredential
+        (c) =>
+          ({
+            ...c,
+            type: c.type || "tempo",
+            hosting: c.hosting || (c.azureAdProxy ? "server" : "cloud"),
+            authMode: c.authMode || "basic",
+          }) as JiraCredential
       );
 
       setMasterPassword(password);
