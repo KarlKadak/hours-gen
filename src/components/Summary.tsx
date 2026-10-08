@@ -1,5 +1,5 @@
-import { FC, MouseEvent, useState } from "react";
-import { TargetHoursConfig, ProjectData, DisplayMode } from "../types";
+import { FC, PointerEvent, useRef } from "react";
+import { TargetHoursConfig, ProjectData, DisplayMode, ProgressTargets } from "../types";
 import { formatDuration } from "../utils/duration";
 import { calculateTargetHours, getDayTargetHours, formatDateISO } from "../utils/holidays";
 
@@ -7,6 +7,8 @@ interface SummaryProps {
   totalHours: number;
   displayMode: DisplayMode;
   targetConfig: TargetHoursConfig;
+  progressTargets: ProgressTargets;
+  setProgressTargets: (value: ProgressTargets) => void;
   projects: ProjectData;
   selectedProject: string;
   setSelectedProject: (value: string) => void;
@@ -39,18 +41,26 @@ function getRollingTargetHours(config: TargetHoursConfig): number {
   return expectedHours;
 }
 
-// Where the target marker sits before the user moves it.
-const DEFAULT_TARGET_PCT = 95;
-
 interface ProgressRowProps {
   label: string;
   value: number;
   target: number;
   displayMode: DisplayMode;
   behindTone?: boolean;
+  // Marker position along the bar in whole percents, owned by the parent so it persists.
+  targetPct: number;
+  onTargetChange: (pct: number) => void;
 }
 
-const ProgressRow: FC<ProgressRowProps> = ({ label, value, target, displayMode, behindTone }) => {
+const ProgressRow: FC<ProgressRowProps> = ({
+  label,
+  value,
+  target,
+  displayMode,
+  behindTone,
+  targetPct,
+  onTargetChange,
+}) => {
   const pct = target > 0 ? (value / target) * 100 : 0;
   const done = pct >= 99.95;
   const color = done
@@ -59,15 +69,35 @@ const ProgressRow: FC<ProgressRowProps> = ({ label, value, target, displayMode, 
     ? "var(--warning)"
     : "var(--accent)";
 
-  // Target position along the bar, snapped to whole percents. Starts at 95% and
-  // stays wherever the pointer last left it, like a physical slider.
-  const [targetPct, setTargetPct] = useState<number>(DEFAULT_TARGET_PCT);
+  // The marker only follows the pointer while the button is held down on the bar,
+  // so plain hovering leaves it where it was.
+  const dragging = useRef(false);
 
-  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+  const moveTo = (e: PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width <= 0) return;
     const ratio = (e.clientX - rect.left) / rect.width;
-    setTargetPct(Math.min(100, Math.max(0, Math.round(ratio * 100))));
+    const next = Math.min(100, Math.max(0, Math.round(ratio * 100)));
+    if (next !== targetPct) onTargetChange(next);
+  };
+
+  const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    dragging.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    moveTo(e);
+  };
+
+  const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (dragging.current) moveTo(e);
+  };
+
+  const handlePointerEnd = (e: PointerEvent<HTMLDivElement>) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
   };
 
   const targetHours = (target * targetPct) / 100;
@@ -87,7 +117,13 @@ const ProgressRow: FC<ProgressRowProps> = ({ label, value, target, displayMode, 
           <span className="ml-1.5 text-[var(--text-faint)]">{pct.toFixed(0)}%</span>
         </span>
       </div>
-      <div className="progress-hover" onMouseMove={handleMouseMove}>
+      <div
+        className="progress-hover"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+      >
         <div className="progress-track">
           <div
             className="progress-fill"
@@ -117,6 +153,8 @@ export const Summary: FC<SummaryProps> = ({
   totalHours,
   displayMode,
   targetConfig,
+  progressTargets,
+  setProgressTargets,
   projects,
   selectedProject,
   setSelectedProject,
@@ -158,6 +196,8 @@ export const Summary: FC<SummaryProps> = ({
             value={totalHours}
             target={targetHours}
             displayMode={displayMode}
+            targetPct={progressTargets.completion}
+            onTargetChange={(pct) => setProgressTargets({ ...progressTargets, completion: pct })}
           />
           <ProgressRow
             label="On track (to date)"
@@ -165,6 +205,8 @@ export const Summary: FC<SummaryProps> = ({
             target={rollingTarget}
             displayMode={displayMode}
             behindTone
+            targetPct={progressTargets.onTrack}
+            onTargetChange={(pct) => setProgressTargets({ ...progressTargets, onTrack: pct })}
           />
         </div>
       )}

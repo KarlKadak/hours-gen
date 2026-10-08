@@ -24,6 +24,12 @@ export interface TargetHoursConfig {
   year: number;
 }
 
+// Marker positions (whole percents) on the two progress bars in the Target card.
+export interface ProgressTargets {
+  completion: number;
+  onTrack: number;
+}
+
 export interface ProjectExportData {
   projectName: string;
   clientName: string;

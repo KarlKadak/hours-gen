@@ -316,12 +316,15 @@ input[type="radio"] {
   border-radius: 999px;
   transition: width 0.3s ease;
 }
-/* Wrapper that gives the thin track a taller hover area and hosts the marker. */
+/* Wrapper that gives the thin track a taller grab area and hosts the marker.
+   The marker is dragged, so block touch scrolling and text selection here. */
 .progress-hover {
   position: relative;
   padding: 6px 0;
   margin: -6px 0;
-  cursor: crosshair;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
 }
 /* Marker and label snap to whole percents; the short eased transition with a
    slight overshoot makes the jump between steps feel like a physical detent. */

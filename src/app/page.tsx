@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, FC, ChangeEvent } from "react";
-import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeEntry, TargetHoursConfig, StoredProjectMapping } from "../types";
+import { RoundMode, RoundInt, DisplayMode, ProjectExportData, ProjectData, TimeEntry, TargetHoursConfig, StoredProjectMapping, ProgressTargets } from "../types";
 import { parseCSV } from "../utils/csv";
 import { groupAndMerge } from "../utils/data";
 import { fetchClockifyRows } from "../utils/clockify";
@@ -64,6 +64,15 @@ const isTargetHoursConfig = (value: unknown): value is TargetHoursConfig => {
   return true;
 };
 
+const DEFAULT_PROGRESS_TARGETS: ProgressTargets = { completion: 95, onTrack: 95 };
+
+const isProgressTargets = (value: unknown): value is ProgressTargets => {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  const isPct = (n: unknown) => typeof n === "number" && n >= 0 && n <= 100;
+  return isPct(v.completion) && isPct(v.onTrack);
+};
+
 const CsvTablePage: FC = () => {
   const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
   const [projects, setProjects] = useState<ProjectData>({});
@@ -105,6 +114,11 @@ const CsvTablePage: FC = () => {
   const [projectMappings, setProjectMappings] = useLocalStorage<Record<string, StoredProjectMapping>>(
     "projectNameMappings",
     {}
+  );
+  const [progressTargets, setProgressTargets] = useLocalStorage<ProgressTargets>(
+    "progressTargets",
+    DEFAULT_PROGRESS_TARGETS,
+    isProgressTargets
   );
 
   const targetConfig = activeConfig;
@@ -367,6 +381,8 @@ const CsvTablePage: FC = () => {
           totalHours={totalHours}
           displayMode={displayMode}
           targetConfig={targetConfig}
+          progressTargets={progressTargets}
+          setProgressTargets={setProgressTargets}
           projects={projects}
           selectedProject={selectedProject}
           setSelectedProject={setSelectedProject}
