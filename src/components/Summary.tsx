@@ -39,6 +39,9 @@ function getRollingTargetHours(config: TargetHoursConfig): number {
   return expectedHours;
 }
 
+// Where the target marker sits before the user moves it.
+const DEFAULT_TARGET_PCT = 95;
+
 interface ProgressRowProps {
   label: string;
   value: number;
@@ -56,24 +59,24 @@ const ProgressRow: FC<ProgressRowProps> = ({ label, value, target, displayMode, 
     ? "var(--warning)"
     : "var(--accent)";
 
-  // Hovered position along the bar, snapped to whole percents. Null when not hovering.
-  const [hoverPct, setHoverPct] = useState<number | null>(null);
+  // Target position along the bar, snapped to whole percents. Starts at 95% and
+  // stays wherever the pointer last left it, like a physical slider.
+  const [targetPct, setTargetPct] = useState<number>(DEFAULT_TARGET_PCT);
 
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width <= 0) return;
     const ratio = (e.clientX - rect.left) / rect.width;
-    setHoverPct(Math.min(100, Math.max(0, Math.round(ratio * 100))));
+    setTargetPct(Math.min(100, Math.max(0, Math.round(ratio * 100))));
   };
 
-  const hoverHours = hoverPct !== null ? (target * hoverPct) / 100 : null;
-  const remaining = hoverHours !== null ? hoverHours - value : null;
+  const targetHours = (target * targetPct) / 100;
+  const remaining = targetHours - value;
   const fmt = (h: number) =>
     displayMode === "decimal" ? `${formatDuration(h, displayMode)}h` : formatDuration(h, displayMode);
 
   // Keep the label inside the bar near the edges instead of centering it on the line.
-  const labelAlign =
-    hoverPct === null ? "center" : hoverPct < 12 ? "start" : hoverPct > 88 ? "end" : "center";
+  const labelAlign = targetPct < 12 ? "start" : targetPct > 88 ? "end" : "center";
 
   return (
     <div>
@@ -84,35 +87,27 @@ const ProgressRow: FC<ProgressRowProps> = ({ label, value, target, displayMode, 
           <span className="ml-1.5 text-[var(--text-faint)]">{pct.toFixed(0)}%</span>
         </span>
       </div>
-      <div
-        className="progress-hover"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoverPct(null)}
-      >
+      <div className="progress-hover" onMouseMove={handleMouseMove}>
         <div className="progress-track">
           <div
             className="progress-fill"
             style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: color }}
           />
         </div>
-        {hoverPct !== null && (
-          <div className="progress-marker" style={{ left: `${hoverPct}%` }} />
-        )}
+        <div className="progress-marker" style={{ left: `${targetPct}%` }} />
       </div>
       <div className="progress-hint num">
-        {hoverPct !== null && hoverHours !== null && remaining !== null && (
-          <span
-            className={`progress-hint-label progress-hint-${labelAlign}`}
-            style={{ left: `${hoverPct}%` }}
-          >
-            <span className="text-[var(--text)]">{hoverPct}%</span>
-            {" = "}
-            {fmt(hoverHours)}
-            <span className="ml-1.5 text-[var(--text-faint)]">
-              {remaining >= 0 ? `${fmt(remaining)} to go` : `${fmt(-remaining)} over`}
-            </span>
+        <span
+          className={`progress-hint-label progress-hint-${labelAlign}`}
+          style={{ left: `${targetPct}%` }}
+        >
+          <span className="text-[var(--text)]">{targetPct}%</span>
+          {" = "}
+          {fmt(targetHours)}
+          <span className="ml-1.5 text-[var(--text-faint)]">
+            {remaining >= 0 ? `${fmt(remaining)} to go` : `${fmt(-remaining)} over`}
           </span>
-        )}
+        </span>
       </div>
     </div>
   );

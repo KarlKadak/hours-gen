@@ -323,6 +323,8 @@ input[type="radio"] {
   margin: -6px 0;
   cursor: crosshair;
 }
+/* Marker and label snap to whole percents; the short eased transition with a
+   slight overshoot makes the jump between steps feel like a physical detent. */
 .progress-marker {
   position: absolute;
   top: 2px;
@@ -332,6 +334,7 @@ input[type="radio"] {
   border-radius: 1px;
   background: var(--text);
   pointer-events: none;
+  transition: left 0.16s cubic-bezier(0.3, 1.3, 0.5, 1);
 }
 /* Fixed-height line under the track so the hint never shifts the layout. */
 .progress-hint {
@@ -346,6 +349,8 @@ input[type="radio"] {
   position: absolute;
   top: 0;
   white-space: nowrap;
+  transition: left 0.16s cubic-bezier(0.3, 1.3, 0.5, 1),
+    transform 0.16s cubic-bezier(0.3, 1.3, 0.5, 1);
 }
 .progress-hint-center { transform: translateX(-50%); }
 .progress-hint-start { transform: translateX(0); }
